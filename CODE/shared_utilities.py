@@ -1,5 +1,5 @@
 """
-Shared utilities for Southern Architect processing pipeline.
+Shared utilities for TSW Dissertation processing pipeline.
 Contains common functions and classes used across multiple steps.
 """
 
@@ -33,10 +33,12 @@ def find_newest_folder(base_directory: str) -> Optional[str]:
     
     return os.path.join(base_directory, folders[0])
 
-def postprocess_api_response(response_data):
-    """Post-process the API response for consistency - updated for geographic entities."""
+from typing import Dict, Any
+
+def postprocess_api_response(response_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Post-process the API response for consistency in the dissertation workflow."""
     
-    # Helper function to convert string to list if needed
+    # Helper: convert string to list if needed
     def ensure_list(field_value):
         if isinstance(field_value, str):
             # Split by comma and clean up each item
@@ -47,49 +49,74 @@ def postprocess_api_response(response_data):
         else:
             return []
     
-    # Handle named entities
+    # ----- namedEntities -----
     if 'namedEntities' in response_data:
         response_data['namedEntities'] = ensure_list(response_data['namedEntities'])
         # Remove duplicates while preserving order
         response_data['namedEntities'] = list(dict.fromkeys(response_data['namedEntities']))
-        # Remove any entities that are just single letters or numbers
-        response_data['namedEntities'] = [entity for entity in response_data['namedEntities'] 
-                                        if len(entity) > 1 or not entity.isalnum()]
+        # Remove entities that are just single letters or numbers
+        response_data['namedEntities'] = [
+            entity for entity in response_data['namedEntities']
+            if len(entity) > 1 or not entity.isalnum()
+        ]
+    else:
+        # Ensure key exists, even if empty
+        response_data.setdefault('namedEntities', [])
     
-    # Handle geographic entities
+    # ----- geographicEntities -----
     if 'geographicEntities' in response_data:
         response_data['geographicEntities'] = ensure_list(response_data['geographicEntities'])
         # Remove duplicates while preserving order
         response_data['geographicEntities'] = list(dict.fromkeys(response_data['geographicEntities']))
-        # Remove any entities that are just single letters or numbers
-        response_data['geographicEntities'] = [entity for entity in response_data['geographicEntities'] 
-                                             if len(entity) > 1 or not entity.isalnum()]
+        # Remove entities that are just single letters or numbers
+        response_data['geographicEntities'] = [
+            entity for entity in response_data['geographicEntities']
+            if len(entity) > 1 or not entity.isalnum()
+        ]
+    else:
+        response_data.setdefault('geographicEntities', [])
     
-    # Handle topics field (also ensure it's a list)
-    if 'topics' in response_data:
-        response_data['topics'] = ensure_list(response_data['topics'])
+    # ----- subjects (normalize any variants) -----
+    if 'subjects' in response_data:
+        response_data['subjects'] = ensure_list(response_data['subjects'])
+    elif 'topics' in response_data:
+        response_data['subjects'] = ensure_list(response_data.pop('topics'))
+    elif 'subjectHeadings' in response_data:
+        response_data['subjects'] = ensure_list(response_data.pop('subjectHeadings'))
+    else:
+        response_data.setdefault('subjects', [])
     
-    # Handle subjects field variations - convert all to 'topics'
-    if 'subjects' in response_data and 'topics' not in response_data:
-        response_data['topics'] = ensure_list(response_data.pop('subjects'))
-    elif 'subjectHeadings' in response_data and 'topics' not in response_data:
-        response_data['topics'] = ensure_list(response_data.pop('subjectHeadings'))
-    
-    # Ensure 'contentWarning' field exists and is properly formatted
+    # ----- contentWarning -----
     if 'contentWarning' not in response_data:
         response_data['contentWarning'] = 'None'
-    elif response_data['contentWarning'].lower() == 'none' or response_data['contentWarning'].strip() == '':
-        response_data['contentWarning'] = 'None'
+    elif isinstance(response_data['contentWarning'], str):
+        cw = response_data['contentWarning'].strip()
+        if cw == '' or cw.lower() == 'none':
+            response_data['contentWarning'] = 'None'
+        else:
+            # Capitalize first letter and ensure it ends with a period
+            cw = cw[0].upper() + cw[1:]
+            response_data['contentWarning'] = cw.rstrip('.') + '.'
     else:
-        # Capitalize the first letter and ensure it ends with a period
-        response_data['contentWarning'] = response_data['contentWarning'].capitalize().rstrip('.') + '.'
+        # Non-string contentWarning → normalize to 'None'
+        response_data['contentWarning'] = 'None'
+    
+    # Optionally: trim whitespace on simple string fields
+    for key in [
+        "title", "creator", "date", "department", "abstract",
+        "type", "access", "publisher", "sponsor", "language"
+    ]:
+        if key in response_data and isinstance(response_data[key], str):
+            response_data[key] = response_data[key].strip()
     
     return response_data
 
-def parse_json_response_enhanced(raw_response: str) -> tuple[Dict[str, Any], Optional[str]]:
+from typing import Dict, Any, Optional, Tuple
+
+def parse_json_response_enhanced(raw_response: str) -> Tuple[Dict[str, Any], Optional[str]]: 
     """Enhanced JSON parsing with multiple recovery strategies."""
     if not raw_response or not raw_response.strip():
-        return None, "Empty response"
+        return {}, "Empty response"
     
     try:
         # Strategy 1: Standard cleaning
@@ -137,20 +164,33 @@ def parse_json_response_enhanced(raw_response: str) -> tuple[Dict[str, Any], Opt
     except json.JSONDecodeError:
         pass
     
-    return None, "All parsing strategies failed"
+    return {}, "All parsing strategies failed"
 
-def preprocess_ocr_text(text):
-    """Preprocess OCR text to fix common errors."""
-    # Add your specific OCR corrections here
-    replacements = {
-        "Sv'cink i^idam": "Frank Adam",
-        # Add more common OCR errors as needed
-    }
-    
-    for error, correction in replacements.items():
-        text = text.replace(error, correction)
-    
-    # Remove unusual characters
-    text = re.sub(r'[^\w\s.,;:!?()-]', '', text)
-    
+import re
+
+def preprocess_ocr_text(text: str) -> str:
+    """
+    Preprocess dissertation text to fix common OCR or encoding issues.
+
+    For now, this is intentionally minimal assuming that most dissertations are either
+    modern, born-digital PDFs or digitized with clean OCR. If you later ingest
+    scanned / OCR'd dissertations and notice recurring errors, add specific
+    replacements below.
+    """
+    # 1. Add dissertation-specific corrections here if you discover them.
+    # Example (commented out until you have real patterns):
+    # replacements = {
+    #     "rn": "m",   # if you see "rn" misread for "m" a lot
+    #     "ﬁ": "fi",   # common ligature issues
+    # }
+    # for error, correction in replacements.items():
+    #     text = text.replace(error, correction)
+
+    # 2. Optionally normalize weird whitespace
+    text = text.replace('\u00a0', ' ')  # non-breaking space → normal space
+    text = re.sub(r'[ \t]+', ' ', text)  # collapse multiple spaces
+    text = re.sub(r'\n{3,}', '\n\n', text)  # collapse 3+ blank lines to 2
+
+    # 3. Do NOT strip punctuation or non-ASCII characters by default,
+    #    to avoid damaging legitimate content (names, formulas, etc.).
     return text

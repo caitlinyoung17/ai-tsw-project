@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Southern Architect Step 1.5: Batch Cleanup
+Dissertation Step 1.5: Batch Cleanup
 ==========================================
 
 This script detects failed batch processing items from Step 1 and reprocesses them 
@@ -22,6 +22,7 @@ import tenacity
 import re
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
+from openpyxl.cell import Cell
 from PIL import Image as PILImage
 from io import BytesIO
 from openpyxl.drawing.image import Image as XLImage
@@ -32,7 +33,7 @@ from shared_utilities import APIStats, postprocess_api_response, parse_json_resp
 # Import our custom modules
 from model_pricing import calculate_cost, get_model_info
 from token_logging import create_token_usage_log, log_individual_response
-from prompts import SouthernArchitectPrompts
+from prompts import DissertationPrompts
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -63,17 +64,12 @@ class BatchCleanupProcessor:
         """Detect workflow type and check for batch processing."""
         metadata_dir = os.path.join(self.folder_path, "metadata", "collection_metadata")
         text_files = ['text_workflow.xlsx', 'text_workflow.json']
-        image_files = ['image_workflow.xlsx', 'image_workflow.json']
         
         has_text_files = all(os.path.exists(os.path.join(metadata_dir, f)) for f in text_files)
-        has_image_files = all(os.path.exists(os.path.join(metadata_dir, f)) for f in image_files)
         
-        if has_text_files and not has_image_files:
+        if has_text_files:
             self.workflow_type = 'text'
             self.excel_path = os.path.join(metadata_dir, 'text_workflow.xlsx')
-        elif has_image_files and not has_text_files:
-            self.workflow_type = 'image'
-            self.excel_path = os.path.join(metadata_dir, 'image_workflow.xlsx')
         else:
             logging.error("Could not determine workflow type or multiple workflow files found.")
             return False
@@ -110,11 +106,13 @@ class BatchCleanupProcessor:
             return False
     
     def detect_failed_items(self) -> List[Tuple[int, Dict[str, Any], str]]:
-        """Detect items that genuinely failed during batch processing - FIXED VERSION"""
+        """Detect items that genuinely failed during batch processing """
         failed_items = []
         
         # Skip API stats if present
         data_items = self.json_data[:-1] if self.json_data and 'api_stats' in self.json_data[-1] else self.json_data
+        if data_items is None:
+            return []
         
         print(f" Analyzing {len(data_items)} items for batch processing failures...")
         
@@ -172,11 +170,9 @@ class BatchCleanupProcessor:
 
     def _has_extreme_repetition(self, analysis: Dict[str, Any], raw_response: str) -> bool:
         """Detect extreme repetition cases"""
-        main_content = self._get_main_content_field(analysis)
-        toc_entry = analysis.get('toc_entry', '')
         
         # Check main fields
-        fields_to_check = [main_content, toc_entry, raw_response]
+        fields_to_check = [raw_response]
         
         for field_content in fields_to_check:
             if not field_content or len(field_content.strip()) < 30:
@@ -250,13 +246,6 @@ class BatchCleanupProcessor:
         max_count = max(char_counts.values())
         return max_count / len(text)
     
-    def _get_main_content_field(self, analysis: Dict[str, Any]) -> str:
-        """Get the main content field value."""
-        if self.workflow_type == 'text':
-            return analysis.get('cleaned_text', '')
-        else:
-            return analysis.get('text_transcription', '')
-    
     def parse_json_response_enhanced(self, raw_response: str) -> Tuple[Dict[str, Any], Optional[str]]:
         """Enhanced JSON parsing using shared utility."""
         return parse_json_response_enhanced(raw_response)
@@ -278,7 +267,6 @@ class BatchCleanupProcessor:
         # Get original content
         file_path = item.get('file_path', '')
         folder_name = item.get('folder', '')
-        page_number = item.get('page_number', 0)
         
         # Read the original text file
         try:

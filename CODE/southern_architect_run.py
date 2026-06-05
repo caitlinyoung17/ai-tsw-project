@@ -295,36 +295,36 @@ class SouthernArchitectWorkflowRunner:
         print(f" Starting complete workflow at {start_time.strftime('%H:%M:%S')}")
         print("="*70)
         
-        # Run Step 1
-        if not self.run_step1(resume, step1_model):
-            print(" Step 1 failed - stopping workflow")
-            return False
+        # # Run Step 1
+        # if not self.run_step1(resume, step1_model):
+        #     print(" Step 1 failed - stopping workflow")
+        #     return False
         
-        # Run Step 1.5 (NEW - automatic batch cleanup)
-        if not self.run_step1_5(step1_5_model):
-            # Note: Step 1.5 failure is not critical - it may just mean no cleanup was needed
-            print(" Step 1.5 completed with issues.  Continuing workflow")
-            # Don't mark as overall failure since Step 1.5 might return False for "no cleanup needed"
+        # # Run Step 1.5 (NEW - automatic batch cleanup)
+        # if not self.run_step1_5(step1_5_model):
+        #     # Note: Step 1.5 failure is not critical - it may just mean no cleanup was needed
+        #     print(" Step 1.5 completed with issues.  Continuing workflow")
+        #     # Don't mark as overall failure since Step 1.5 might return False for "no cleanup needed"
         
-        # Run Step 2
-        if not self.run_step2():
-            overall_success = False
-            failed_steps.append("Step 2: Multi-Vocabulary Enhancement")
+        # # Run Step 2
+        # if not self.run_step2():
+        #     overall_success = False
+        #     failed_steps.append("Step 2: Multi-Vocabulary Enhancement")
         
-        # Run Step 3
-        if not self.run_step3(step3_model):
-            overall_success = False
-            failed_steps.append("Step 3: AI-Powered Vocabulary Selection")
+        # # Run Step 3
+        # if not self.run_step3(step3_model):
+        #     overall_success = False
+        #     failed_steps.append("Step 3: AI-Powered Vocabulary Selection")
         
-        # Run Step 4
-        if not self.run_step4(step4_model):
-            overall_success = False
-            failed_steps.append("Step 4: Issue-Level Synthesis")
+        # # Run Step 4
+        # if not self.run_step4(step4_model):
+        #     overall_success = False
+        #     failed_steps.append("Step 4: Issue-Level Synthesis")
         
-        # Run Step 5
-        if not self.run_step5():
-            overall_success = False
-            failed_steps.append("Step 5: Entity Authority File Creation")
+        # # Run Step 5
+        # if not self.run_step5():
+        #     overall_success = False
+        #     failed_steps.append("Step 5: Entity Authority File Creation")
         
         # Final summary
         end_time = datetime.now()

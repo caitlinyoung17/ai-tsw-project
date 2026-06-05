@@ -9,3 +9,4 @@ requests
 aiohttp
 pillow
 rapidfuzz
+pdfminer.six

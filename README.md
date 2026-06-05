@@ -1,20 +1,24 @@
 # University of Texas at Austin Libraries
-## Southern Architect AI Cataloging Project
+## Texas ScholarWorks Metadata Project
 
 ### Project Overview
 This code is part of an ongoing project focused on cataloging the University of Texas at Austin's collection of Southern Architect and Building News journals using Large Language Models (LLMs) to assist in the first-pass metadata creation process. Our research project evaluates the effectiveness of LLMs in enhancing cataloging workflows. In the larger project, we considered both API and web-based interaction with Large Language Models for metadata creation. We presented on this topic at TCDL 2025, and look forward to presenting our work again this year at the DCMI Annual Conference and the ASIS&T Annual Meeting.
-
-[Southern Architect and Building News](https://collections.lib.utexas.edu/?f%5Bmods_relatedItem_titleInfo_title_source_t%5D%5B%5D=Southern+Architect+and+Building+News) was an illustrated monthly journal devoted to the interests of architects, builders, and the hardware trade. It was published from 1882-1932. The collection is currently housed in the Architecture and Planning Library Special Collections at the University of Texas Libraries, The University of Texas at Austin.
+ !!!!! REWRITE !!!!
 
 ### Project Goals
 Initially, we tested Large Language Models' ability to contribute effectively in the following metadata tasks: OCR creation/improvement, summarization, named entity extraction, and subject heading assignment. The current implementation has evolved into a comprehensive 5-step workflow that integrates controlled vocabularies and produces scholarly-quality archival metadata.
+!!!!! REWRITE !!!!
 
 ### Workflow Architecture
 
-The processing pipeline consists of five integrated steps that transform raw OCR text or journal page images into comprehensive archival metadata:
+The processing pipeline consists of five integrated modules that takes University of Texas Dissertations and creates comprehensive archival metadata:
+
+#### Step 1: PDF to TXT
+**Scripts**: `pdf_to_txt.py`
+- !!! explain what happens here !!!
 
 #### Step 1: Initial Metadata Extraction
-**Scripts**: `southern_architect_step1_text.py`, `southern_architect_step1_image.py`
+**Scripts**: `tsw_initial_metadata_extraction.py`
 - Processes OCR text files or image files using OpenAI models
 - Generates comprehensive metadata including text transcriptions, content summaries, visual descriptions (image script only), topic search terms, and initial entity extraction
 - Supports both individual and batch processing with automatic cost optimization
@@ -27,7 +31,7 @@ The processing pipeline consists of five integrated steps that transform raw OCR
 - Ensures clean, complete metadata before downstream processing
 
 #### Step 2: Multi-Vocabulary Enhancement
-**Script**: `southern_architect_step2.py`
+**Script**: `tsw_vocab_querying.py`
 - Uses topics and geographic entities to search for controlled vocabulary terms
 - Queries multiple authoritative sources:
   - **LCSH** (Library of Congress Subject Headings)
@@ -38,19 +42,12 @@ The processing pipeline consists of five integrated steps that transform raw OCR
 - Limited to 3 terms per vocabulary per topic to limit text size of inputs in the next step
 
 #### Step 3: AI-Powered Vocabulary Selection
-**Script**: `southern_architect_step3.py`
+**Script**: `tsw_terms_selection.py`
 - Uses OpenAI models to select the most appropriate terms from Step 2 results
 - Prompt applies scholarly criteria for historical accuracy and geographical relevance
 - Generates page-level metadata files that include OCR
 - Creates issue content indexes with comprehensive metadata
 - Produces vocabulary mapping report with selection indicators
-
-#### Step 4: Issue-Level Synthesis
-**Script**: `southern_architect_step4.py`
-- Synthesizes scholarly issue-level descriptions using AI
-- LLM selects top 10 subject headings per issue from previously chosen page-level vocabulary terms
-- Notes FAST geographic terms with URIs
-- Creates comprehensive issue metadata files for each journal issue
 
 #### Step 5: Entity Authority File Creation
 **Script**: `southern_architect_step5.py`
@@ -135,14 +132,9 @@ python southern_architect_run.py --workflow image # best results
 
 ### Text Reports
 - Human-readable vocabulary mapping report
-- Issue content indexes and issue-level metadata
+- Dissertation metadata
 - Entity authority report
 - Processing logs and API usage summaries
-
-### Page-Level Metadata
-- Individual text files for each page
-- Complete metadata including transcription and selected subject headings
-- Geographic entities and content warnings
 
 ## Features
 
@@ -175,11 +167,6 @@ python southern_architect_run.py --workflow image # best results
 ### API Usage
 - **OpenAI**: Assurances that OpenAI does not use API data for training: [OpenAI Enterprise Privacy](https://openai.com/enterprise-privacy/)
 
-## Research Publications/Presentations
-- DCMI Annual Conference 2025
-- ASIS&T Annual Meeting 2025 
-- TCDL 2025
-
 ## Team
 This project represents ongoing research into AI applications for archival metadata. Contributions are welcome! 
 For questions about implementation or research collaboration, please reach out via email. 
@@ -188,8 +175,7 @@ For questions about implementation or research collaboration, please reach out v
 - Devon Murphy, Metadata Analyst: [devon.murphy@austin.utexas.edu​](mailto:devon.murphy@austin.utexas.edu​)
 - Karina Sanchez, Scholars Lab Librarian: [karinasanchez@austin.utexas.edu](mailto:karinasanchez@austin.utexas.edu)
 - Katie Pierce Meyer, Head of Architectural Collections: [katiepiercemeyer@austin.utexas.edu](mailto:katiepiercemeyer@austin.utexas.edu)
-- Willem Borkgren, Scholars Lab GRA
-- Josh Conrad, Digital Initiatives Archival Fellow for the Alexander Architectural Archives
+- Caitlin Young, Scholars Lab GRA
 
 ## Development
 
