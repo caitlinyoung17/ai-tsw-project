@@ -9,8 +9,9 @@ from typing import List, Dict, Any, Tuple
 from openai import OpenAI
 import tenacity
 from openpyxl import load_workbook
+from openpyxl.cell import Cell
 from openpyxl.styles import Alignment
-from prompts import SouthernArchitectPrompts
+from prompts import DissertationPrompts
 from shared_utilities import APIStats, find_newest_folder
 
 # Import our custom modules
@@ -31,10 +32,14 @@ DEFAULT_MODEL = "gpt-4.1-mini"  # Default model name, change as needed
 
 api_stats = APIStats()
 
-# Add debugging to prepare_batch_requests function in southern_architect_step3.py:
-
 def prepare_batch_requests(entries_with_vocab, vocabulary_selector, model_name):
-    """Prepare all vocabulary selection requests for batch processing."""
+    """
+    Prepare all vocabulary selection requests for batch processing.
+
+    entries_with_vocab: iterable of (entry_index, entry_data) tuples, where
+        entry_data contains the subjects and candidate vocab terms for one dissertation.
+    vocabulary_selector: object with .system_prompt and .create_user_prompt(entry_data).
+    """
     batch_requests = []
     custom_id_mapping = {}
         
@@ -59,110 +64,137 @@ def prepare_batch_requests(entries_with_vocab, vocabulary_selector, model_name):
         custom_id_mapping[f"vocab_selection_{i}"] = {
             "entry_index": entry_index,
             "entry_data": entry_data,
-            "row_number": entry_index + 2  # +2 for header row
+            "row_number": entry_index + 2  # +2 for header row if you log to Excel
         }
     
     return batch_requests, custom_id_mapping
 
 class VocabularySelector:
-    """Class to select the best vocabulary terms for each page using an LLM."""
+    """
+    Class to select the best controlled vocabulary terms for each dissertation using an LLM.
+    """
 
     def __init__(self, model_name: str = DEFAULT_MODEL):
         self.model_name = model_name
-        self.system_prompt = SouthernArchitectPrompts.get_vocabulary_selection_system_prompt()
+        # System prompt for vocabulary selection (from DissertationPrompts)
+        self.system_prompt = DissertationPrompts.get_vocabulary_selection_system_prompt()
 
     def create_system_prompt(self) -> str:
-        """Create the system prompt for vocabulary selection."""
-        return SouthernArchitectPrompts.get_vocabulary_selection_system_prompt()
+        """Return the system prompt for vocabulary selection."""
+        return self.system_prompt
 
     def create_user_prompt(self, entry_data: Dict[str, Any]) -> str:
-        """Create the user prompt for a specific entry with topics organized format."""
+        """
+        Create the user prompt for a specific dissertation entry.
+
+        entry_data is expected to contain:
+          - 'analysis': {
+                'title': str,
+                'abstract': str,
+                'subjects': list[str] or comma-separated str,
+                'vocabulary_search_results': {
+                    subject: [ {label, uri, source, ...}, ... ]
+                }
+            }
+        """
         analysis = entry_data.get('analysis', {})
         
         # Build content description
         content_parts = []
         
-        # Add main content
-        if analysis.get('folder'):
-            content_parts.append(f"ISSUE:\n{analysis['folder']}")
+        title = analysis.get('title', '').strip()
+        if title:
+            content_parts.append(f"TITLE:\n{title}")
         
-        # Add visual description for images
-        if analysis.get('visual_description'):
-            content_parts.append(f"VISUAL DESCRIPTION:\n{analysis['visual_description']}")
+        abstract = analysis.get('abstract', '').strip()
+        if abstract:
+            content_parts.append(f"ABSTRACT:\n{abstract}")
         
-        # Add TOC entry
-        if analysis.get('toc_entry'):
-            content_parts.append(f"SUMMARY:\n{analysis['toc_entry']}")
+        # Add original subjects
+        subjects_value = analysis.get('subjects', [])
+        if isinstance(subjects_value, list):
+            subjects = [s.strip() for s in subjects_value if s and str(s).strip()]
+        elif isinstance(subjects_value, str):
+            subjects = [s.strip() for s in subjects_value.split(',') if s.strip()]
+        else:
+            subjects = []
         
-        # Add original topics (NOT geographic entities)
-        if analysis.get('topics'):
-            topics = analysis['topics']
-            if isinstance(topics, list):
-                content_parts.append(f"TOPICS:\n{', '.join(topics)}")
-            else:
-                content_parts.append(f"TOPICS:\n{topics}")
+        if subjects:
+            content_parts.append(f"SUBJECTS (free-text):\n{', '.join(subjects)}")
         
-        content_description = "\n\n".join(content_parts)
+        content_description = "\n\n".join(content_parts) if content_parts else "No detailed description available."
         
-        # Build topic-organized vocabulary terms
-        topic_to_terms = analysis.get('vocabulary_search_results', {})
+        # Candidate vocabulary terms per subject (from Step 2)
+        subject_to_terms = analysis.get('vocabulary_search_results', {})
         
-        if not topic_to_terms:
-            return None  # No topic-organized vocabulary terms available
+        if not subject_to_terms:
+            return ''  # No candidate vocabulary terms available
         
-        topics_section = self._build_topic_organized_terms(topic_to_terms)
+        subjects_section = self._build_subject_organized_terms(subject_to_terms)
         
-        # Combine everything
-        user_prompt = f"""Analyze this page content and select appropriate vocabulary terms:
+        # Combine everything into the user prompt
+        user_prompt = f"""Analyze this dissertation's content and select appropriate controlled vocabulary terms.
 
 {content_description}
 
-AVAILABLE VOCABULARY TERMS BY TOPIC:
-{topics_section}
+AVAILABLE CANDIDATE CONTROLLED TERMS BY SUBJECT:
+{subjects_section}
 
-Select the most relevant terms following your instructions. Use exact labels without [source] brackets. Skip topics with no genuinely relevant terms.
+For each free-text subject, select zero or more controlled headings that best represent the concept in the context of the dissertation.
+Use the exact controlled labels (without [source] brackets).
+Skip subjects where no candidate headings are genuinely relevant.
+Return ONLY the JSON object in the format specified in the system prompt.
 """
         
         return user_prompt
 
-    def _build_topic_organized_terms(self, topic_to_terms: Dict[str, List[Dict]]) -> str:
-        """Build the topic-organized terms section from topic_to_terms mapping."""
-        sections = []
-        
-        for topic, terms in topic_to_terms.items():
-            if terms:  # Only show topics that have terms
-                sections.append(f"  Topic: {topic}")
-                
-                term_strings = []
-                for term in terms:
-                    if isinstance(term, dict):
-                        label = term.get('label', '').strip()
-                        source = term.get('source', 'Unknown')
-                        uri = term.get('uri', '')
-                        if uri:
-                            term_strings.append(f"{label} ({uri}) [{source}]")
-                        else:
-                            term_strings.append(f"{label} [{source}]")
-                
-                sections.append(f"  Terms: {'; '.join(term_strings)}")
-                sections.append("")  # Empty line between topics
-        
-        return "\n".join(sections)
+    def _build_subject_organized_terms(self, subject_to_terms: Dict[str, List[Dict[str, Any]]]) -> str:
+        """
+        Build a human-readable section listing candidate terms organized by subject.
 
+        subject_to_terms: subject -> list of term dicts with keys like 'label', 'uri', 'source'.
+        """
+        lines = []
+        for subject, terms in subject_to_terms.items():
+            lines.append(f"Subject: {subject}")
+            if not terms:
+                lines.append("  (No candidate controlled terms)")
+                lines.append("")
+                continue
+            
+            for term in terms:
+                label = term.get('label', 'N/A')
+                uri = term.get('uri', '')
+                source = term.get('source', 'Unknown')
+                if uri:
+                    lines.append(f"  - {label} ({uri}) [{source}]")
+                else:
+                    lines.append(f"  - {label} [{source}]")
+            lines.append("")
+        
+        return "\n".join(lines)
     @tenacity.retry(
         wait=tenacity.wait_exponential(multiplier=1, min=4, max=10),
         stop=tenacity.stop_after_attempt(5),
         retry=tenacity.retry_if_exception_type(Exception)
     )
     def select_vocabulary_terms(self, entry_data: Dict[str, Any]) -> Tuple[Dict[str, Any], str, Any, float]:
-        """Select vocabulary terms for a single entry."""
+        """
+        Select controlled vocabulary terms for a single dissertation entry.
+
+        Returns:
+            parsed_response: dict with at least 'selected_terms' key
+            raw_response: raw text returned by the model
+            usage: response.usage (or dict-like) for token logging
+            processing_time: float seconds
+        """
         user_prompt = self.create_user_prompt(entry_data)
         
         if not user_prompt:
-            # No vocabulary terms available
+            # No candidate vocabulary terms available
             return {
                 "selected_terms": []
-            }, "No vocabulary terms available for selection", None, 0
+            }, "No vocabulary terms available for selection", None, 0.0
         
         api_stats.total_requests += 1
         start_time = time.time()
@@ -180,24 +212,34 @@ Select the most relevant terms following your instructions. Use exact labels wit
         processing_time = time.time() - start_time
         api_stats.processing_times.append(processing_time)
         
-        api_stats.total_input_tokens += response.usage.prompt_tokens
-        api_stats.total_output_tokens += response.usage.completion_tokens
+        # Safely handle usage
+        usage = response.usage or {}
+        prompt_tokens = getattr(usage, "prompt_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0)
         
-        raw_response = response.choices[0].message.content.strip()
+        api_stats.total_input_tokens += prompt_tokens
+        api_stats.total_output_tokens += completion_tokens
+        
+        # Safely get the first choice's content
+        if not response.choices:
+            raise Exception("No choices returned from OpenAI API during vocabulary selection")
+        
+        message_content = response.choices[0].message.content or ""
+        raw_response = message_content.strip()
         
         # Parse JSON response
         try:
             parsed_response = self.parse_json_response(raw_response)
-            return parsed_response, raw_response, response.usage, processing_time
+            return parsed_response, raw_response, usage, processing_time
         except Exception as e:
             logging.error(f"Error parsing vocabulary selection response: {e}")
             # Return empty selection on parsing error
             return {
                 "selected_terms": []
-            }, raw_response, response.usage, processing_time
+            }, raw_response, usage, processing_time
 
     def parse_json_response(self, raw_response: str) -> Dict[str, Any]:
-        """Parse JSON response from the API."""
+        """Parse JSON response from the API and ensure it has the expected structure."""
         from shared_utilities import parse_json_response_enhanced
         
         parsed_json, error = parse_json_response_enhanced(raw_response)
@@ -211,48 +253,61 @@ Select the most relevant terms following your instructions. Use exact labels wit
         
         return parsed_json
 
-class SouthernArchitectVocabularyProcessor:
-    """Main class for vocabulary selection and clean output generation."""
+
+class DissertationVocabularyProcessor:
+    """
+    Main class for vocabulary selection and clean output generation for dissertations.
+    Uses an LLM to select controlled vocabulary terms from candidate headings.
+    """
 
     def __init__(self, folder_path: str, model_name: str = DEFAULT_MODEL):
+        """
+        folder_path: path to a single dissertation output folder from Step 1/2
+                     (e.g., output_folders/Dissertation_Metadata_Created_YYYY-MM-DD_Time_HH-MM-SS)
+        """
         self.folder_path = folder_path
         self.model_name = model_name
-        self.workflow_type = None
-        self.json_data = None
-        self.excel_path = None
+        self.workflow_type = ''
+        self.json_data = []
+        self.excel_path = ''
         self.vocabulary_selector = VocabularySelector(model_name)
-        self.was_batch_processed = False 
-    
+        self.was_batch_processed = False
+
     def detect_workflow_type(self) -> bool:
-        """Detect workflow type and check for vocabulary enhancement."""
-        # Check for expected files in the metadata/collection_metadata subfolder
+        """
+        Detect workflow type and check that vocabulary enhancement (Step 2) has been run.
+
+        For dissertations we expect only text workflow files:
+        - metadata/collection_metadata/text_workflow.xlsx
+        - metadata/collection_metadata/text_workflow.json
+        and a vocabulary_mapping_report.txt from Step 2.
+        """
         metadata_dir = os.path.join(self.folder_path, "metadata", "collection_metadata")
         text_files = ['text_workflow.xlsx', 'text_workflow.json']
-        image_files = ['image_workflow.xlsx', 'image_workflow.json']
         
         has_text_files = all(os.path.exists(os.path.join(metadata_dir, f)) for f in text_files)
-        has_image_files = all(os.path.exists(os.path.join(metadata_dir, f)) for f in image_files)
         
-        if has_text_files and not has_image_files:
+        if has_text_files:
             self.workflow_type = 'text'
             self.excel_path = os.path.join(metadata_dir, 'text_workflow.xlsx')
-        elif has_image_files and not has_text_files:
-            self.workflow_type = 'image'
-            self.excel_path = os.path.join(metadata_dir, 'image_workflow.xlsx')
         else:
-            logging.error("Could not determine workflow type or multiple workflow files found.")
+            logging.error("Could not find text workflow files (text_workflow.xlsx/json) in the metadata folder.")
             return False
         
-        # Check if vocabulary enhancement has been run (step 2)
+        # Check if vocabulary enhancement has been run (Step 2)
         vocab_report_path = os.path.join(metadata_dir, 'vocabulary_mapping_report.txt')
         if not os.path.exists(vocab_report_path):
             logging.error("Vocabulary enhancement (step 2) must be run before step 3.")
             return False
 
-        return True
+        return True 
     
     def load_json_data(self) -> bool:
-        """Load JSON data and verify vocabulary terms exist."""
+        """
+        Load JSON data for the detected workflow type and verify that vocabulary terms exist.
+
+        Expects that Step 2 has populated analysis['vocabulary_search_results'] for at least one item.
+        """
         json_filename = f"{self.workflow_type}_workflow.json"
         metadata_dir = os.path.join(self.folder_path, "metadata", "collection_metadata")
         json_path = os.path.join(metadata_dir, json_filename)
@@ -273,7 +328,7 @@ class SouthernArchitectVocabularyProcessor:
                         break
             
             if not has_vocab_terms:
-                logging.error("No vocabulary terms found. Please run step 2 first.")
+                logging.error("No vocabulary terms found in JSON. Please run Step 2 (vocab querying) first.")
                 return False
             
             print(f"Loaded JSON data from {json_filename}")
@@ -281,15 +336,17 @@ class SouthernArchitectVocabularyProcessor:
             
         except Exception as e:
             logging.error(f"Error loading JSON data: {e}")
-            return False
-    
+            return False  
+                 
     def find_entries_with_vocabulary(self) -> List[Tuple[int, Dict[str, Any]]]:
         """Find entries that have vocabulary terms available for selection."""
         entries_with_vocab = []
         
         # Skip the last item if it's API stats
         data_items = self.json_data[:-1] if self.json_data and 'api_stats' in self.json_data[-1] else self.json_data
-        
+        if data_items is None:
+            return entries_with_vocab
+
         for i, item in enumerate(data_items):
             if 'analysis' in item and 'vocabulary_search_results' in item['analysis']:
                 vocab_terms = item['analysis']['vocabulary_search_results']
@@ -299,8 +356,13 @@ class SouthernArchitectVocabularyProcessor:
         return entries_with_vocab
     
     def process_vocabulary_selection(self, entries_with_vocab: List[Tuple[int, Dict[str, Any]]]) -> Dict[int, Dict[str, Any]]:
-        """Process vocabulary selection using batch processing when appropriate."""
-        selection_results = {}
+        """
+        Process vocabulary selection using batch processing when appropriate.
+
+        entries_with_vocab: list of (entry_index, entry_data) tuples, where entry_data
+        is a JSON item with analysis['vocabulary_search_results'] populated.
+        """
+        selection_results: Dict[int, Dict[str, Any]] = {}
         
         # Create logs folder
         logs_folder_path = os.path.join(self.folder_path, "logs")
@@ -337,7 +399,7 @@ class SouthernArchitectVocabularyProcessor:
             # Submit batch
             batch_id = processor.submit_batch(
                 formatted_requests, 
-                f"Southern Architect Vocabulary Selection - {len(batch_requests)} entries - {datetime.now().strftime('%Y-%m-%d')}"
+                f"Dissertation Vocabulary Selection - {len(batch_requests)} entries - {datetime.now().strftime('%Y-%m-%d')}"
             )
             
             # Wait for completion
@@ -358,7 +420,7 @@ class SouthernArchitectVocabularyProcessor:
                 # Process results
                 for custom_id, result_data in processed_results["results"].items():
                     if custom_id.startswith("vocab_selection_"):
-                        # Extract the index from custom_id
+                        # Extract the index from custom_id: vocab_selection_{i}_xxxx
                         parts = custom_id.split("_")
                         if len(parts) >= 3:
                             try:
@@ -384,13 +446,13 @@ class SouthernArchitectVocabularyProcessor:
                                         # Log individual response
                                         log_individual_response(
                                             logs_folder_path=logs_folder_path,
-                                            script_name="southern_architect_vocabulary_selection",
+                                            script_name="dissertation_vocabulary_selection",
                                             row_number=row_number,
-                                            barcode=f"{entry_data.get('folder', 'unknown')}_page{entry_data.get('page_number', 'unknown')}",
+                                            barcode=f"entry_{entry_index}",
                                             response_text=raw_response,
                                             model_name=self.model_name,
-                                            prompt_tokens=usage.get("prompt_tokens", 0),
-                                            completion_tokens=usage.get("completion_tokens", 0),
+                                            prompt_tokens=usage.get("prompt_tokens", 0) if usage else 0,
+                                            completion_tokens=usage.get("completion_tokens", 0) if usage else 0,
                                             processing_time=0  # Batch processing doesn't track individual timing
                                         )
                                         
@@ -411,9 +473,9 @@ class SouthernArchitectVocabularyProcessor:
                                         # Log error
                                         log_individual_response(
                                             logs_folder_path=logs_folder_path,
-                                            script_name="southern_architect_vocabulary_selection",
+                                            script_name="dissertation_vocabulary_selection",
                                             row_number=row_number,
-                                            barcode=f"{entry_data.get('folder', 'unknown')}_page{entry_data.get('page_number', 'unknown')}",
+                                            barcode=f"entry_{entry_index}",
                                             response_text=raw_response,
                                             model_name=self.model_name,
                                             prompt_tokens=0,
@@ -437,15 +499,19 @@ class SouthernArchitectVocabularyProcessor:
                 print(f"\nBatch processing completed: {processed_entries}/{total_entries} entries processed")
                 return selection_results
         
-        # Fall back to individual processing (existing code)
+        # Fall back to individual processing
         print(f"Using individual processing:")
         self.was_batch_processed = False
         return self.process_vocabulary_selection_individual(entries_with_vocab, logs_folder_path)
-
-    def process_vocabulary_selection_individual(self, entries_with_vocab: List[Tuple[int, Dict[str, Any]]], logs_folder_path: str) -> Dict[int, Dict[str, Any]]:
+                     
+    def process_vocabulary_selection_individual(
+        self,
+        entries_with_vocab: List[Tuple[int, Dict[str, Any]]],
+        logs_folder_path: str
+    ) -> Dict[int, Dict[str, Any]]:
         """Process vocabulary selection using individual API calls."""
         self.was_batch_processed = False
-        selection_results = {}
+        selection_results: Dict[int, Dict[str, Any]] = {}
         total_entries = len(entries_with_vocab)
         processed_entries = 0
         
@@ -460,13 +526,13 @@ class SouthernArchitectVocabularyProcessor:
                 # Log individual response
                 log_individual_response(
                     logs_folder_path=logs_folder_path,
-                    script_name="southern_architect_vocabulary_selection",
-                    row_number=entry_index + 2,  # +2 for header row
-                    barcode=f"{entry_data.get('folder', 'unknown')}_page{entry_data.get('page_number', 'unknown')}",
+                    script_name="dissertation_vocabulary_selection",
+                    row_number=entry_index + 2,  # +2 for header row if logging to Excel
+                    barcode=f"entry_{entry_index}",
                     response_text=raw_response,
                     model_name=self.model_name,
-                    prompt_tokens=usage.prompt_tokens if usage else 0,
-                    completion_tokens=usage.completion_tokens if usage else 0,
+                    prompt_tokens=getattr(usage, "prompt_tokens", 0) if usage else 0,
+                    completion_tokens=getattr(usage, "completion_tokens", 0) if usage else 0,
                     processing_time=processing_time
                 )
                 
@@ -509,7 +575,7 @@ class SouthernArchitectVocabularyProcessor:
         normalized = re.sub(r'[.,;:!?]$', '', normalized)
         
         return normalized
-
+    
     def deduplicate_vocabulary_terms(self, matched_terms: List[Dict]) -> List[Dict]:
         """
         Deduplicate vocabulary terms when they have the same words (same order or different order).
@@ -591,32 +657,45 @@ class SouthernArchitectVocabularyProcessor:
 
         return deduplicated_terms
 
-    def match_selected_labels_to_original_terms(self, selected_labels: List[str], vocab_search_results: Dict[str, List[Dict]]) -> List[Dict]:
+    def match_selected_labels_to_original_terms(
+        self,
+        selected_labels: List[str],
+        vocab_search_results: Dict[str, List[Dict]]
+    ) -> List[Dict]:
         """
-        Improved matching that finds all semantically equivalent terms and applies source priority.
-        This fixes the issue where LLM selects one source but we end up with a different source in output.
+        Match LLM-selected labels back to the original candidate term objects,
+        finding all semantically equivalent terms and applying source priority.
+
+        This fixes the issue where the LLM selects one source but we end up with a different source in output.
         """
         
         # Create a comprehensive mapping of all available terms
-        all_available_terms = []
-        for topic, terms in vocab_search_results.items():
+        all_available_terms: List[Dict] = []
+        for subject, terms in vocab_search_results.items():
             for term in terms:
                 if isinstance(term, dict):
                     all_available_terms.append(term)
         
-        
         def normalize_for_comparison(label: str) -> str:
-            """Normalize labels for semantic comparison - remove punctuation, lowercase, normalize spaces"""
+            """Normalize labels for semantic comparison - remove punctuation, lowercase, normalize spaces."""
             import re
             normalized = re.sub(r'[^a-z\s]', '', label.lower())
             normalized = re.sub(r'\s+', ' ', normalized).strip()
             return normalized
         
-        matched_terms = []
+        # Define source priority (lower number = higher priority)
+        source_priority = {
+            'Getty AAT': 1,
+            'LCSH': 2, 
+            'FAST': 3,
+            'Getty TGN': 4
+        }
+        
+        matched_terms: List[Dict] = []
         
         for selected_label in selected_labels:            
             # Find all terms that could semantically match this selected label
-            candidate_matches = []
+            candidate_matches: List[Dict] = []
             
             # Normalize the selected label for comparison
             selected_words = set(normalize_for_comparison(selected_label).split())
@@ -630,28 +709,19 @@ class SouthernArchitectVocabularyProcessor:
                 if selected_words == term_words and len(selected_words) > 0:
                     candidate_matches.append(term)
                     
-            
             # If we found semantic matches, apply source priority
             if candidate_matches:
-                # Define source priority (lower number = higher priority)
-                source_priority = {
-                    'Getty AAT': 1,
-                    'LCSH': 2, 
-                    'FAST': 3,
-                    'Getty TGN': 4
-                }
-                
-                # Choose the best match based on source priority
                 best_match = min(candidate_matches, key=lambda t: source_priority.get(t.get('source', ''), 999))
                 matched_terms.append(best_match)
                 
-                if len(candidate_matches) > 1:
-                    rejected_terms = [t for t in candidate_matches if t != best_match]
-                    rejected_labels = [f"{t.get('label')} [{t.get('source')}]" for t in rejected_terms]
-
+                # Optional: rejected terms for debugging
+                # rejected_terms = [t for t in candidate_matches if t != best_match]
+                # rejected_labels = [f"{t.get('label')} [{t.get('source')}]" for t in rejected_terms]
+            
             else:
                 # If no semantic matches, try exact string matching as fallback
                 selected_normalized = selected_label.lower().strip()
+                candidate_matches = []
                 
                 for term in all_available_terms:
                     term_label = term.get('label', '').strip()
@@ -664,29 +734,37 @@ class SouthernArchitectVocabularyProcessor:
                     # Apply priority even for exact matches
                     best_match = min(candidate_matches, key=lambda t: source_priority.get(t.get('source', ''), 999))
                     matched_terms.append(best_match)
-                
+        
+        # Deduplicate by URI (keep first occurrence)
         seen_uris = set()
-        deduplicated_terms = []
+        deduplicated_terms: List[Dict] = []
         for term in matched_terms:
             uri = term.get('uri', '')
             if uri and uri not in seen_uris:
                 deduplicated_terms.append(term)
                 seen_uris.add(uri)
-            elif not uri:  # Keep terms without URIs but they're probably rare
+            elif not uri:  # Keep terms without URIs, though they should be rare
                 deduplicated_terms.append(term)
         
         return deduplicated_terms
 
-
     def update_json_data(self, selection_results: Dict[int, Dict[str, Any]]) -> bool:
-        """Update JSON data with selected vocabulary terms only."""
+        """
+        Update JSON data with selected vocabulary terms only.
+
+        For each entry, this replaces the LLM's selected labels with the full term objects
+        from analysis['vocabulary_search_results'], and stores them under
+        analysis['final_selected_terms'].
+        """
         try:
             # Skip the last item if it's API stats
             data_items = self.json_data[:-1] if self.json_data and 'api_stats' in self.json_data[-1] else self.json_data
-            api_stats = self.json_data[-1] if self.json_data and 'api_stats' in self.json_data[-1] else None
+            api_stats_item = self.json_data[-1] if self.json_data and 'api_stats' in self.json_data[-1] else None
             
             updated_items = []
-            
+            if data_items is None:
+                data_items = []
+
             for i, item in enumerate(data_items):
                 if i in selection_results:
                     # Get selected term labels from LLM response
@@ -697,7 +775,8 @@ class SouthernArchitectVocabularyProcessor:
                     for term in selected_term_responses:
                         if isinstance(term, dict):
                             label = term.get('label', '').strip()
-                            selected_labels.append(label)
+                            if label:
+                                selected_labels.append(label)
                     
                     # Match labels to full term objects from vocabulary_search_results
                     vocab_search_results = item['analysis'].get('vocabulary_search_results', {})
@@ -712,8 +791,8 @@ class SouthernArchitectVocabularyProcessor:
                 updated_items.append(item)
             
             # Add API stats back if it existed
-            if api_stats:
-                updated_items.append(api_stats)
+            if api_stats_item:
+                updated_items.append(api_stats_item)
             
             # Save updated JSON
             json_filename = f"{self.workflow_type}_workflow.json"
@@ -729,29 +808,36 @@ class SouthernArchitectVocabularyProcessor:
         except Exception as e:
             logging.error(f"Error updating JSON data: {e}")
             return False
-
+        
     def update_excel_file(self, selection_results: Dict[int, Dict[str, Any]]) -> bool:
-        """Update Excel file with selected vocabulary terms."""
+        """
+        Update Excel file with selected vocabulary terms.
+
+        This replaces the Step 2 "Subject Vocabulary Terms" column with
+        "Selected Subject Vocabulary Terms" containing only the final chosen terms.
+        """
         try:
             # Load the existing workbook
             wb = load_workbook(self.excel_path)
             analysis_sheet = wb['Analysis']
             
-            # Find the Topic Vocabulary Terms column (from step 2)
-            topic_vocab_col = None
+            # Find the Subject Vocabulary Terms column (from Step 2)
+            subject_vocab_col = None
             for col in range(1, analysis_sheet.max_column + 1):
                 header_value = analysis_sheet.cell(row=1, column=col).value
-                if header_value and "Topic Vocabulary Terms" in header_value:
-                    topic_vocab_col = col
+                if header_value and "Subject Vocabulary Terms" in str(header_value):
+                    subject_vocab_col = col
                     break
             
-            if topic_vocab_col is None:
-                logging.error("Topic Vocabulary Terms column not found. Please run step 2 first.")
+            if subject_vocab_col is None:
+                logging.error("Subject Vocabulary Terms column not found. Please run Step 2 first.")
                 return False
             
             # Update header to reflect that these are selected terms
-            header_cell = analysis_sheet.cell(row=1, column=topic_vocab_col)
-            header_cell.value = "Selected Topic Vocabulary Terms"
+            header_cell = analysis_sheet.cell(row=1, column=subject_vocab_col)
+            # double-check that this is a Cell and not a MergedCell
+            if isinstance(header_cell, Cell):    
+                header_cell.value = "Selected Subject Vocabulary Terms"
             
             # Get the data for processing
             data_items = self.json_data[:-1] if self.json_data and 'api_stats' in self.json_data[-1] else self.json_data
@@ -772,7 +858,10 @@ class SouthernArchitectVocabularyProcessor:
                                 label = term.get('label', '')
                                 uri = term.get('uri', '')
                                 source = term.get('source', '')
-                                formatted_terms.append(f"{label} ({uri}) [{source}]")
+                                if label and uri:
+                                    formatted_terms.append(f"{label} ({uri}) [{source}]")
+                                elif label:
+                                    formatted_terms.append(f"{label} [{source}]")
                         
                         cell_value = "; ".join(formatted_terms)
                         updated_rows += 1
@@ -782,15 +871,18 @@ class SouthernArchitectVocabularyProcessor:
                     cell_value = ""
                 
                 # Set the cell value
-                cell = analysis_sheet.cell(row=row_num, column=topic_vocab_col)
-                cell.value = cell_value
+                cell = analysis_sheet.cell(row=row_num, column=subject_vocab_col)
+                if isinstance(cell, Cell):
+                    cell.value = cell_value 
                 cell.alignment = Alignment(vertical='top', wrap_text=True)
             
             # Clear vocabulary terms for entries that weren't processed
             for row_num in range(2, analysis_sheet.max_row + 1):
                 entry_index = row_num - 2
                 if entry_index not in selection_results:
-                    cell = analysis_sheet.cell(row=row_num, column=topic_vocab_col)
+                    cell = analysis_sheet.cell(row=row_num, column=subject_vocab_col)
+                    if not isinstance(cell, Cell):
+                        continue
                     cell.value = ""
             
             # Save the updated workbook
@@ -803,421 +895,121 @@ class SouthernArchitectVocabularyProcessor:
             return False
 
     def create_vocabulary_mapping_report(self, selection_results: Dict[int, Dict[str, Any]]) -> bool:
-        """Create vocabulary mapping report showing original terms organized by topic with checkmarks for chosen ones."""
+        """
+        Create a dissertation-level vocabulary selection report.
+
+        For each dissertation entry, this report shows:
+          - Free-text subjects
+          - Candidate controlled terms per subject (from Step 2)
+          - Selected controlled terms (from Step 3)
+        """
         try:
             # Save vocabulary report in the collection_metadata folder
             metadata_dir = os.path.join(self.folder_path, "metadata", "collection_metadata")
-            report_path = os.path.join(metadata_dir, "vocabulary_mapping_report.txt")
+            report_path = os.path.join(metadata_dir, "vocabulary_selection_report.txt")
             
             # Skip the last item if it's API stats
             data_items = self.json_data[:-1] if self.json_data and 'api_stats' in self.json_data[-1] else self.json_data
             
             with open(report_path, 'w', encoding='utf-8') as f:
-                f.write("SOUTHERN ARCHITECT VOCABULARY MAPPING REPORT\n")
-                f.write("=" * 50 + "\n\n")
+                f.write("DISSERTATION VOCABULARY SELECTION REPORT (STEP 3)\n")
+                f.write("=" * 60 + "\n\n")
                 f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write(f"Workflow Type: {self.workflow_type.upper()}\n\n")
                 
-                # Process each page
                 for i, item in enumerate(data_items):
-                    folder = item.get('folder', 'Unknown')
-                    page_number = item.get('page_number', 'Unknown')
+                    analysis = item.get('analysis', {})
+                    title = analysis.get('title', 'Unknown title')
+                    subjects_value = analysis.get('subjects', [])
+                    vocab_search_results = analysis.get('vocabulary_search_results', {})
+                    final_selected_terms = analysis.get('final_selected_terms', [])
                     
-                    f.write(f"PAGE {page_number} (ISSUE: {folder}):\n")
-                    f.write("=" * (len(f"PAGE {page_number} (ISSUE: {folder}):")) + "\n")
-                    
-                    # Get vocabulary search results, geographic vocabulary results, and final selected terms
-                    vocab_search_results = item['analysis'].get('vocabulary_search_results', {})
-                    geo_vocab_results = item['analysis'].get('geographic_vocabulary_search_results', {})
-                    selected_terms = item['analysis'].get('final_selected_terms', [])
-                    
-                    # Create set of selected URIs for easy lookup
-                    selected_uris = set()
-                    if selected_terms:
-                        for term in selected_terms:
-                            if isinstance(term, dict):
-                                uri = term.get('uri', '')
-                                if uri:
-                                    selected_uris.add(uri)
-                    
-                    # Show topics and geographic entities on this page
-                    topics_list = list(vocab_search_results.keys()) if vocab_search_results else []
-                    geo_entities_list = list(geo_vocab_results.keys()) if geo_vocab_results else []
-                    
-                    if topics_list:
-                        f.write(f"Topics on this page ({len(topics_list)}): {', '.join(topics_list)}\n")
-                    if geo_entities_list:
-                        f.write(f"Geographic entities on this page ({len(geo_entities_list)}): {', '.join(geo_entities_list)}\n")
-                    
-                    if vocab_search_results:
-                        # Count total topics and terms
-                        total_topics = len(vocab_search_results)
-                        total_terms = sum(len(terms) for terms in vocab_search_results.values())
-                        
-                        # Show vocabulary terms organized by topic (ONLY TOPICS, NOT GEOGRAPHIC)
-                        f.write(f"\nTOPIC VOCABULARY TERMS:\n")
-                        selected_count = 0
-                        topics_with_selections = 0
-                        
-                        for topic, terms in vocab_search_results.items():
-                            f.write(f"  Topic: {topic}\n")
-                            
-                            if terms:
-                                # Build terms list with checkmarks using URI matching
-                                topic_terms = []
-                                topic_has_selection = False
-                                
-                                for term in terms:
-                                    if isinstance(term, dict):
-                                        label = term.get('label', '')
-                                        source = term.get('source', '')
-                                        uri = term.get('uri', '')
-                                        
-                                        # Use URI matching
-                                        is_selected = uri in selected_uris
-                                        
-                                        if is_selected:
-                                            selected_count += 1
-                                            topic_has_selection = True
-                                            topic_terms.append(f"{label} ({uri}) [{source}] ✓")
-                                        else:
-                                            topic_terms.append(f"{label} ({uri}) [{source}]")
-
-                                f.write(f"    Terms: {'; '.join(topic_terms)}\n")
-                                
-                                if topic_has_selection:
-                                    topics_with_selections += 1
-                            else:
-                                f.write(f"    Terms: No terms available\n")
-                            
-                            f.write("\n")
-                        
-                        # Summary counts with list of chosen terms
-                        f.write(f"TOPIC SUMMARY: {selected_count} terms selected from {topics_with_selections}/{total_topics} topics ({total_terms} total terms available)\n")
-                        
-                        # Add list of chosen terms if any were selected
-                        if selected_count > 0:
-                            f.write("CHOSEN TOPIC TERMS:\n")
-                            for term in selected_terms:
-                                if isinstance(term, dict):
-                                    label = term.get('label', '')
-                                    uri = term.get('uri', '')
-                                    source = term.get('source', '')
-                                    f.write(f"  - {label} ({uri}) [{source}]\n")
-                            f.write("\n")
-                    
-                    # Show geographic vocabulary terms (NOT selected by LLM, just for display)
-                    if geo_vocab_results:
-                        f.write(f"GEOGRAPHIC VOCABULARY TERMS (not selected by LLM):\n")
-                        for entity, terms in geo_vocab_results.items():
-                            f.write(f"  Geographic Entity: {entity}\n")
-                            
-                            if terms:
-                                geo_terms = []
-                                for term in terms:
-                                    if isinstance(term, dict):
-                                        label = term.get('label', '')
-                                        source = term.get('source', '')
-                                        uri = term.get('uri', '')
-                                        geo_terms.append(f"{label} ({uri}) [{source}]")
-                                f.write(f"    Terms: {'; '.join(geo_terms)}\n")
-                            else:
-                                f.write(f"    Terms: No terms available\n")
-                            f.write("\n")
-                    
-                    if not vocab_search_results and not geo_vocab_results:
-                        f.write("No vocabulary terms available for this page.\n")
-                    
-                    f.write("\n" + "=" * 50 + "\n\n")
-            
-            print(f"Created vocabulary mapping report: {report_path}")
-            return True
-            
-        except Exception as e:
-            logging.error(f"Error creating vocabulary mapping report: {e}")
-            return False
-
-    def create_page_metadata_files(self) -> bool:
-        """Create individual page metadata files with geographic entities included."""
-        try:
-            # Create page_metadata folder inside metadata
-            output_folder = os.path.join(self.folder_path, "metadata", "page_metadata")
-            os.makedirs(output_folder, exist_ok=True)
-            
-            # Skip the last item if it's API stats
-            data_items = self.json_data[:-1] if self.json_data and 'api_stats' in self.json_data[-1] else self.json_data
-            
-            for entry in data_items:
-                analysis = entry.get('analysis', {})
-                folder_name = entry.get('folder', 'unknown')
-                page_number = entry.get('page_number', 0)
-                
-                # Generate clean filename
-                clean_folder = "".join(c for c in folder_name if c.isalnum() or c in ('-', '_')).strip()
-                if not clean_folder:
-                    clean_folder = "unknown"
-                filename = f"{clean_folder}_page{page_number:03d}_metadata.txt"
-                file_path = os.path.join(output_folder, filename)
-                
-                # Generate metadata content
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write("=" * 60 + "\n")
-                    f.write("SOUTHERN ARCHITECT - PAGE METADATA\n")
-                    f.write("=" * 60 + "\n\n")
-                    
-                    # Page identification
-                    f.write("PAGE IDENTIFICATION:\n")
-                    f.write(f"Folder: {folder_name}\n")
-                    f.write(f"Page Number: {page_number}\n\n")
-                    
-                    # Content sections
-                    f.write("CONTENT:\n")
-                    f.write("-" * 30 + "\n")
-                    
-                    if self.workflow_type == 'text':
-                        text_content = analysis.get('cleaned_text', '').strip()
-                        if text_content:
-                            f.write("Cleaned OCR Text:\n")
-                            f.write(text_content + "\n\n")
+                    # Normalize subjects to list
+                    if isinstance(subjects_value, str):
+                        subjects = [s.strip() for s in subjects_value.split(',') if s.strip()]
                     else:
-                        # Image workflow
-                        text_transcription = analysis.get('text_transcription', '').strip()
-                        if text_transcription:
-                            f.write("Text Transcription:\n")
-                            f.write(text_transcription + "\n\n")
-                        
-                        visual_description = analysis.get('visual_description', '').strip()
-                        if visual_description:
-                            f.write("Visual Description:\n")
-                            f.write(visual_description + "\n\n")
+                        subjects = subjects_value if isinstance(subjects_value, list) else []
                     
-                    # TOC entry
-                    toc_entry = analysis.get('toc_entry', '').strip()
-                    if toc_entry:
-                        f.write("Description:\n")
-                        f.write(toc_entry + "\n\n")
+                    f.write(f"ENTRY {i}:\n")
+                    f.write(f"Title: {title}\n")
+                    if subjects:
+                        f.write(f"Subjects (free-text): {', '.join(subjects)}\n")
+                    else:
+                        f.write("Subjects (free-text): None\n")
+                    f.write("-" * 60 + "\n")
                     
-                    # Metadata
-                    f.write("METADATA:\n")
-                    f.write("-" * 30 + "\n")
+                    # Candidate terms per subject
+                    if vocab_search_results:
+                        f.write("CANDIDATE CONTROLLED TERMS BY SUBJECT (from Step 2):\n")
+                        for subject, terms in vocab_search_results.items():
+                            f.write(f"  Subject: {subject}\n")
+                            if terms:
+                                for term in terms:
+                                    if isinstance(term, dict):
+                                        label = term.get('label', '')
+                                        uri = term.get('uri', '')
+                                        source = term.get('source', '')
+                                        if uri:
+                                            f.write(f"    - {label} ({uri}) [{source}]\n")
+                                        else:
+                                            f.write(f"    - {label} [{source}]\n")
+                            else:
+                                f.write("    - No candidate terms\n")
+                            f.write("\n")
+                    else:
+                        f.write("No candidate controlled terms found for this entry (Step 2).\n\n")
                     
-                    # Topics
-                    topics = analysis.get('topics', [])
-                    if isinstance(topics, str):
-                        topics = [s.strip() for s in topics.split(',') if s.strip()]
-                    if topics:
-                        f.write("Topics:\n")
-                        for topic in topics:
-                            f.write(f"  - {topic}\n")
-                        f.write("\n")
-
-                    # Named Entities
-                    named_entities = analysis.get('named_entities', [])
-                    if isinstance(named_entities, str):
-                        # Handle comma-separated string format
-                        named_entities = [s.strip() for s in named_entities.split(',') if s.strip()]
-                    if named_entities:
-                        f.write("Named Entities:\n")
-                        for entity in named_entities:
-                            f.write(f"  - {entity}\n")
-                        f.write("\n")
-
-                    # ADD: Geographic Entities (from step 1)
-                    geographic_entities = analysis.get('geographic_entities', [])
-                    if isinstance(geographic_entities, str):
-                        # Handle comma-separated string format
-                        geographic_entities = [s.strip() for s in geographic_entities.split(',') if s.strip()]
-                    if geographic_entities:
-                        f.write("Geographic Entities:\n")
-                        for entity in geographic_entities:
-                            f.write(f"  - {entity}\n")
-                        f.write("\n")
-
-                    # Subject headings - use final_selected_terms only (LLM selected topic terms)
-                    vocab_terms = analysis.get('final_selected_terms', [])
-                    if vocab_terms:
-                        f.write("Subject Headings (Selected):\n")
-                        for term in vocab_terms:
+                    # Selected terms
+                    if final_selected_terms:
+                        f.write("SELECTED CONTROLLED TERMS (Step 3):\n")
+                        for term in final_selected_terms:
                             if isinstance(term, dict):
                                 label = term.get('label', '')
                                 uri = term.get('uri', '')
                                 source = term.get('source', '')
-                                f.write(f"  - {label} ({uri}) [{source}]\n")
-                        f.write("\n")
-                    
-                    # Geographic Subject Headings (from step 2)
-                    geo_vocab_results = analysis.get('geographic_vocabulary_search_results', {})
-                    if geo_vocab_results:
-                        f.write("Geographic Subject Headings (from vocabulary lookup):\n")
-                        for entity, terms in geo_vocab_results.items():
-                            if terms:
-                                for term in terms:
-                                    if isinstance(term, dict):
-                                        label = term.get('label', '')
-                                        uri = term.get('uri', '')
-                                        source = term.get('source', '')
-                                        f.write(f"  - {label} ({uri}) [{source}]\n")
-                        f.write("\n")
-                    
-                    # Content Warning if it exists
-                    content_warning = analysis.get('content_warning', '').strip()
-                    if content_warning and content_warning.lower() != 'none':
-                        f.write("Content Warning:\n")
-                        f.write(f"  {content_warning}\n\n")
-                    
-                    f.write("=" * 60 + "\n")
-            
-            print(f"Created page metadata files in: {output_folder}")
-            return True
-            
-        except Exception as e:
-            logging.error(f"Error creating page metadata files: {e}")
-            return False
-
-    def create_issue_content_index(self) -> bool:
-        """Create separate issue content indexes for each unique folder/issue."""
-        try:
-            # Skip API stats for processing
-            data_items = self.json_data[:-1] if self.json_data and 'api_stats' in self.json_data[-1] else self.json_data
-            
-            if not data_items:
-                print("No data items found for issue content index")
-                return False
-            
-            # Group entries by folder/issue
-            issues = {}
-            for entry in data_items:
-                folder_name = entry.get('folder', 'Unknown')
-                if folder_name not in issues:
-                    issues[folder_name] = []
-                issues[folder_name].append(entry)
-            
-            print(f"Found {len(issues)} unique issues: {list(issues.keys())}")
-            
-            # Create issue_metadata folder inside metadata
-            issue_metadata_dir = os.path.join(self.folder_path, "metadata", "issue_metadata")
-            os.makedirs(issue_metadata_dir, exist_ok=True)
-
-            # Create separate index file for each issue
-            for folder_name, entries in issues.items():
-                # Create filename and path
-                toc_filename = f"{folder_name}_Issue_Content_Index.txt"
-                toc_path = os.path.join(issue_metadata_dir, toc_filename)
-                
-                with open(toc_path, 'w', encoding='utf-8') as f:
-                    f.write(f"ISSUE CONTENT INDEX: {folder_name}\n")
-                    f.write("=" * (len(f"ISSUE CONTENT INDEX: {folder_name}")) + "\n\n")
-                    
-                    # Sort entries by page number for logical ordering
-                    sorted_entries = sorted(entries, key=lambda x: x.get('page_number', 0))
-                    
-                    for entry in sorted_entries:
-                        analysis = entry.get('analysis', {})
-                        page_number = entry.get('page_number', 'Unknown')
-                        
-                        # TOC entry (summary)
-                        toc_entry = analysis.get('toc_entry', '').strip()
-                        if not toc_entry or toc_entry.lower() == '[no toc entry]':
-                            toc_entry = "[No summary available]"
-                        
-                        f.write(f"Page {page_number} (Issue: {folder_name}):\n\n{toc_entry}\n\n")
-                        
-                        # Topics
-                        topics = analysis.get('topics', [])
-                        if isinstance(topics, str):
-                            topics = [s.strip() for s in topics.split(',') if s.strip()]
-                        if topics:
-                            f.write("Topics:\n")
-                            for topic in topics:
-                                f.write(f"  - {topic}\n")
-                            f.write("\n")
-                        
-                        # Named Entities
-                        named_entities = analysis.get('named_entities', [])
-                        if isinstance(named_entities, str):
-                            # Handle comma-separated string format
-                            named_entities = [s.strip() for s in named_entities.split(',') if s.strip()]
-                        if named_entities:
-                            f.write("Named Entities:\n")
-                            for entity in named_entities:
-                                f.write(f"  - {entity}\n")
-                            f.write("\n")
-
-                        # Geographic Entities
-                        geographic_entities = analysis.get('geographic_entities', [])
-                        if isinstance(geographic_entities, str):
-                            # Handle comma-separated string format
-                            geographic_entities = [s.strip() for s in geographic_entities.split(',') if s.strip()]
-                        if geographic_entities:
-                            f.write("Geographic Entities:\n")
-                            for entity in geographic_entities:
-                                f.write(f"  - {entity}\n")
-                            f.write("\n")
-
-                        # Subject headings - use final_selected_terms only (LLM selected)
-                        vocabulary_terms = analysis.get('final_selected_terms', [])
-                        if vocabulary_terms:
-                            f.write("Subject Headings (Selected):\n")
-                            for term in vocabulary_terms:
-                                if isinstance(term, dict):
-                                    label = term.get('label', '')
-                                    uri = term.get('uri', '')
-                                    source = term.get('source', '')
+                                if uri:
                                     f.write(f"  - {label} ({uri}) [{source}]\n")
-                            f.write("\n")
-                        
-                        # Geographic Subject Headings 
-                        geo_vocab_results = analysis.get('geographic_vocabulary_search_results', {})
-                        if geo_vocab_results:
-                            f.write("Geographic Subject Headings:\n")
-                            for entity, terms in geo_vocab_results.items():
-                                if terms:
-                                    for term in terms:
-                                        if isinstance(term, dict):
-                                            label = term.get('label', '')
-                                            uri = term.get('uri', '')
-                                            source = term.get('source', '')
-                                            f.write(f"  - {label} ({uri}) [{source}]\n")
-                            f.write("\n")
-                        
-                        # Content Warning if present
-                        content_warning = analysis.get('content_warning', '').strip()
-                        if content_warning and content_warning.lower() != 'none':
-                            f.write(f"Content Warning:\n")
-                            f.write(f"  {content_warning}\n")
-                        
-                        f.write("\n" + "-" * 50 + "\n\n")
-                
-                print(f"Created issue content index: {toc_path} ({len(entries)} pages)")
+                                else:
+                                    f.write(f"  - {label} [{source}]\n")
+                        f.write("\n")
+                    else:
+                        f.write("No controlled terms selected for this entry.\n\n")
+                    
+                    f.write("=" * 60 + "\n\n")
             
+            print(f"Created vocabulary selection report: {report_path}")
             return True
             
         except Exception as e:
-            logging.error(f"Error creating issue content index: {e}")
+            logging.error(f"Error creating vocabulary selection report: {e}")
             return False
-    
+
     def run(self) -> bool:
-        """Main execution method."""
-        print(f"\nSOUTHERN ARCHITECT STEP 3 - VOCABULARY SELECTION")
+        """
+        Main execution method for Step 3: vocabulary selection for dissertations.
+
+        Uses a small LLM to select controlled vocabulary terms from the candidate
+        headings produced in Step 2, then updates JSON/Excel and logs usage.
+        """
+        print(f"\nDISSERTATION STEP 3 - VOCABULARY SELECTION")
         print(f"Processing folder: {self.folder_path}")
         print(f"Model: {self.model_name}")
-        print(f"Note: Geographic entities are included in outputs but NOT sent to LLM for selection")
         print("-" * 50)
         
-        # Detect workflow type
+        # Detect workflow type and confirm Step 2 has run
         if not self.detect_workflow_type():
             return False
         
         print(f"Detected workflow type: {self.workflow_type.upper()}")
         
-        # Load JSON data
+        # Load JSON data and verify vocabulary terms exist
         if not self.load_json_data():
             return False
         
         # Find entries with vocabulary terms
         entries_with_vocab = self.find_entries_with_vocabulary()
         if not entries_with_vocab:
-            print("No entries with vocabulary terms found")
+            print("No entries with vocabulary terms found (analysis['vocabulary_search_results'] is empty).")
             return False
         
         print(f"Found {len(entries_with_vocab)} entries with vocabulary terms")
@@ -1228,12 +1020,11 @@ class SouthernArchitectVocabularyProcessor:
             print(f"Pricing: ${model_info['input_per_1k']:.5f}/1K input, ${model_info['output_per_1k']:.5f}/1K output")
         
         # Process vocabulary selection
-        print(f"\nSelecting best topic vocabulary terms for each page...")
-        print(f"Geographic entities will be preserved but not processed by LLM")
+        print(f"\nSelecting best controlled vocabulary terms for each dissertation entry...")
         selection_results = self.process_vocabulary_selection(entries_with_vocab)
         
         if not selection_results:
-            print("Vocabulary selection failed")
+            print("Vocabulary selection failed or returned no results.")
             return False
         
         # Update JSON data with selected terms only
@@ -1244,16 +1035,8 @@ class SouthernArchitectVocabularyProcessor:
         if not self.update_excel_file(selection_results):
             return False
         
-        # Create clean vocabulary mapping report
+        # Create a vocabulary selection report (optional but useful)
         if not self.create_vocabulary_mapping_report(selection_results):
-            return False
-        
-        # Create page metadata files (with geographic entities)
-        if not self.create_page_metadata_files():
-            return False
-
-        # Create issue content index (with geographic entities)
-        if not self.create_issue_content_index():
             return False
         
         # Calculate and log final metrics
@@ -1264,7 +1047,7 @@ class SouthernArchitectVocabularyProcessor:
             model_name=self.model_name,
             prompt_tokens=api_stats.total_input_tokens,
             completion_tokens=api_stats.total_output_tokens,
-            is_batch=False
+            is_batch=self.was_batch_processed
         )
         
         # Create logs folder and token usage log
@@ -1273,54 +1056,46 @@ class SouthernArchitectVocabularyProcessor:
             os.makedirs(logs_folder_path)
         
         create_token_usage_log(
-        logs_folder_path=logs_folder_path,
-        script_name="southern_architect_vocabulary_selection",
-        model_name=self.model_name,
-        total_items=len(selection_results),
-        items_with_issues=0,
-        total_time=total_processing_time,
-        total_prompt_tokens=api_stats.total_input_tokens,
-        total_completion_tokens=api_stats.total_output_tokens,
-        additional_metrics={
-            "Processing mode": "BATCH" if self.was_batch_processed else "INDIVIDUAL",  
-            "Actual cost": f"${estimated_cost:.4f}",
-            "Average tokens per entry": f"{(api_stats.total_input_tokens + api_stats.total_output_tokens)/len(selection_results):.0f}" if selection_results else "0",
-            "Batch processing used": "Yes" if self.was_batch_processed else "No"  
-        }
-    )
+            logs_folder_path=logs_folder_path,
+            script_name="dissertation_vocabulary_selection",
+            model_name=self.model_name,
+            total_items=len(selection_results),
+            items_with_issues=0,  # you can refine this if you track per-entry errors
+            total_time=total_processing_time,
+            total_prompt_tokens=api_stats.total_input_tokens,
+            total_completion_tokens=api_stats.total_output_tokens,
+            additional_metrics={
+                "Processing mode": "BATCH" if self.was_batch_processed else "INDIVIDUAL",
+                "Actual cost": f"${estimated_cost:.4f}",
+                "Average tokens per entry": f"{(api_stats.total_input_tokens + api_stats.total_output_tokens)/len(selection_results):.0f}" if selection_results else "0",
+                "Batch processing used": "Yes" if self.was_batch_processed else "No"
+            }
+        )
         
         # Show final summary
         total_selected = sum(len(result['selection_result'].get('selected_terms', [])) for result in selection_results.values())
         entries_with_selections = sum(1 for result in selection_results.values() if result['selection_result'].get('selected_terms'))
         
         print("\n" + "=" * 50)
-        print(f"FINAL SUMMARY:")
+        print("FINAL SUMMARY:")
         print(f"\n ✅ STEP 3 COMPLETE: Selected vocabulary terms in {os.path.basename(self.folder_path)}")
-        print(f"Page metadata files, issue indexes, updated Excel/JSON, and vocabulary report created")
+        print(f"Updated Excel/JSON and vocabulary selection report created")
         print(f"Entries processed: {len(selection_results)}")
         print(f"Total vocabulary terms selected: {total_selected}")
         print(f"Entries with selections: {entries_with_selections}/{len(selection_results)}")
         print(f"Selection rate: {(entries_with_selections/len(selection_results)*100):.1f}%")
         print(f"Total tokens: {api_stats.total_input_tokens + api_stats.total_output_tokens:,}")
         print(f"Estimated cost: ${estimated_cost:.4f}")
-
-        # Show which issue content index files were created
-        data_items = self.json_data[:-1] if self.json_data and 'api_stats' in self.json_data[-1] else self.json_data
-        unique_issues = set(entry.get('folder', 'Unknown') for entry in data_items)
-        issue_metadata_dir = os.path.join(self.folder_path, "metadata", "issue_metadata")
-        for issue in sorted(unique_issues):
-            toc_filename = f"{issue}_Issue_Content_Index.txt"
-            print(f"  Issue index: {os.path.join(issue_metadata_dir, toc_filename)}")
-
+        
         return True
 
 def main():
     
-    # Default base directory for Southern Architect output folders
-    # Get script directory and build path to output folders
+    # Default base directory for dissertation output folders (from Steps 1 and 2)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     base_output_dir = os.path.join(script_dir, "output_folders")
 
+    # Allow overriding the model via environment variable; default to DEFAULT_MODEL
     model_name = os.getenv('MODEL_NAME', DEFAULT_MODEL)
 
     # Default folder path (newest folder if not specified)
@@ -1330,16 +1105,15 @@ def main():
         return 1
     print(f"Auto-selected newest folder: {os.path.basename(folder_path)}")
 
-
     # Create and run the processor
-    processor = SouthernArchitectVocabularyProcessor(folder_path, model_name)
+    processor = DissertationVocabularyProcessor(folder_path, model_name)
     success = processor.run()
     
     if not success:
-        print("Vocabulary selection failed")
+        print("Vocabulary selection (Step 3) failed")
         return 1
     
     return 0
 
 if __name__ == "__main__":
-    exit(main())
+    exit(main())                                

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-OpenAI Batch Processing Module for AI Music Metadata Project
+OpenAI Batch Processing Module for AI Dissertation Metadata Project
 
 This module provides batch processing capabilities for OpenAI API calls,
 offering significant cost savings (50% discount) and higher rate limits
-for large-scale CD metadata processing.
+for large-scale dissertation3 metadata processing.
 
 """
 
