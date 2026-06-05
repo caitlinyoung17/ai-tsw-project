@@ -7,7 +7,6 @@ All components are defined once and assembled into the original method names.
 Workflow Steps:
 - Step 1: Initial metadata extraction (text analysis)
 - Step 3: Vocabulary selection from controlled vocabularies  
-- Step 4: Dissertation synthesis, subject heading selection, and entity authority file creation
 """
 
 class DissertationPrompts:
@@ -17,7 +16,9 @@ class DissertationPrompts:
     
     # Base description used in all prompts
     DISSERTATION_DESCRIPTION = """
-    You are an archivist creating metadata for thesis and dissertation works being ingested into the Texas ScholarWorks repository. The metadata should support academic discovery for researchers and students. Use your judgment to identify the most important bibliographic and intellectual metadata from the text.
+    You are an archivist creating metadata for thesis and dissertation works being ingested into the Texas ScholarWorks repository. 
+    The metadata should support academic discovery for researchers and students. 
+    Use your judgment to identify the most important bibliographic and intellectual metadata from the text.
     """
     
     # Content warning assessment instructions
@@ -89,7 +90,8 @@ class DissertationPrompts:
             "Search the entire dissertation text for the formal abstract section (often labeled 'Abstract').",
             "If a formal abstract is present, extract the abstract text and reproduce it word-for-word, preserving the original wording and order.",
             "You may normalize spacing and line breaks, but do not change the wording or meaning of the formal abstract.",
-            "If no formal abstract is present in the dissertation, write a concise descriptive abstract (2–5 sentences) that summarizes the overall research problem, methods, and main findings or conclusions, based on the full text.",
+            "If no formal abstract is present in the dissertation, write a concise descriptive abstract (2–5 sentences) "
+            "that summarizes the overall research problem, methods, and main findings or conclusions, based on the full text.",
             "Use neutral, descriptive language rather than promotional language.",
             "If there is not enough information to infer a meaningful descriptive abstract, return an empty string ('')."
         ]
@@ -104,8 +106,10 @@ class DissertationPrompts:
             "Cover the breadth of what is discussed in the dissertation.",
             "Write each search term as a separate string in the list.",
             "Up to 8 terms may be included.",
-            "Priority topics: main discipline and subfield, key concepts and theories, research methods used, specific topics or phenomena studied, temporal focus (if important analytically), and notable contributions or innovations.",
-            "For academic content, identify the precise research area, central theoretical constructs, core variables or entities analyzed, and recurring themes or problems addressed.",
+            "Priority topics: main discipline and subfield, key concepts and theories, research methods used, specific topics or phenomena studied, "
+            "temporal focus (if important analytically), and notable contributions or innovations.",
+            "For academic content, identify the precise research area, central theoretical constructs, "
+            "core variables or entities analyzed, and recurring themes or problems addressed.",
             "Do not include proper names or geographic locations, as these will be captured in the namedEntities and geographicEntities fields."
         ]
     ]
@@ -145,7 +149,8 @@ class DissertationPrompts:
         "namedEntities",
         "List non-geographic entities with type in parentheses.",
         [
-            "Format: 'Albert Einstein (Person)', 'John Smith (Advisor)', 'Maria Garcia (CommitteeMember)', 'University of Texas at Austin (Institution)', 'World Health Organization (Organization)', 'Nature (Journal)', etc.",
+            "Format: 'Albert Einstein (Person)', 'John Smith (Advisor)', 'Maria Garcia (CommitteeMember)', "
+            "'University of Texas at Austin (Institution)', 'World Health Organization (Organization)', 'Nature (Journal)', etc.",
             "Types: (Person), (Advisor), (CommitteeMember), (Organization), (Institution), (Journal), (Publisher), (FundingAgency).",
             "Do NOT include geographic locations here - use geographicEntities field instead.",
             "Limit to entities that are central to the dissertation's argument, methodology, authorship, or historical/intellectual context."
@@ -172,7 +177,8 @@ class DissertationPrompts:
     # Content warning field (text prompts)
     CONTENT_WARNING_FIELD_TEXT = [
         "contentWarning",
-        "Note potentially sensitive content, or 'None' if none exists. Another archivist will assess if any measures are appropriate, your job is just to note if there is anything that may be concerning.",
+        "Note potentially sensitive content, or 'None' if none exists. Another archivist will assess if any measures are appropriate, "
+        "your job is just to note if there is anything that may be concerning.",
         [
             "Consider: Biased language or terminology.",
             "Consider: Culturally sensitive material.", 

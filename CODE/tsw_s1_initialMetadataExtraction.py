@@ -4,12 +4,12 @@ import logging
 from datetime import datetime
 from urllib import response
 from openai import OpenAI
-from openpyxl.cell import Cell
 import tenacity
 import re
 from openpyxl import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Alignment
+from openpyxl.cell import Cell
 import time
 from shared_utilities import APIStats, postprocess_api_response, parse_json_response_enhanced, preprocess_ocr_text
 

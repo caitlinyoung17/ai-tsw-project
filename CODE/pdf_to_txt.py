@@ -10,7 +10,35 @@ logging.getLogger("openai").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# When testing, you can use this step to generate and extract .txt files from PDFs to be stored locally, 
+# Utility functions for handling dissertation PDFs and text files. 
+# Works by looking for .txt files first, and if not found, extracting text from PDFs directly (extract_text).
+
+def collect_dissertation_files(input_folder):
+    all_files = []
+    for filename in sorted(os.listdir(input_folder)):
+        if not (filename.endswith('.txt') or filename.endswith('.pdf')):
+            continue
+
+        file_path = os.path.join(input_folder, filename)
+        if not os.path.isfile(file_path):
+            continue
+
+        try:
+            if filename.endswith('.txt'):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            else:  # PDF
+                content = extract_text(file_path)
+
+            all_files.append((filename, file_path, content))
+        except Exception as e:
+            logging.error(f"Error reading file {file_path}: {e}")
+            continue
+
+    return all_files
+
+# When testing, you can use this step (instead of step before) 
+# to generate and extract .txt files from PDFs to be stored locally, 
 # rather than relying on extracted txt file from PDF to be stored in memory. 
 #
 # def convert_pdfs_to_txt(input_folder, output_folder=None):
@@ -45,31 +73,6 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
         
 #         except Exception as e:
 #             logging.error(f"Error converting {pdf_path} to text: {e}")
-
-def collect_dissertation_files(input_folder):
-    all_files = []
-    for filename in sorted(os.listdir(input_folder)):
-        if not (filename.endswith('.txt') or filename.endswith('.pdf')):
-            continue
-
-        file_path = os.path.join(input_folder, filename)
-        if not os.path.isfile(file_path):
-            continue
-
-        try:
-            if filename.endswith('.txt'):
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-            else:  # PDF
-                content = extract_text(file_path)
-
-            all_files.append((filename, file_path, content))
-        except Exception as e:
-            logging.error(f"Error reading file {file_path}: {e}")
-            continue
-
-    return all_files
-
 
 def main():
     # Figure out where this script lives
