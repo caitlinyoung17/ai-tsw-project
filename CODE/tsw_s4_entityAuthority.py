@@ -10,7 +10,7 @@ from collections import defaultdict
 import re
 from shared_utilities import find_newest_folder
 
-# Fuzzy matching imports - try rapidfuzz first (faster), fallback to fuzzywuzzy
+# Fuzzy matching imports - fuzzywuzzy
 try:
     from rapidfuzz import fuzz, process
     FUZZY_LIB = "rapidfuzz"

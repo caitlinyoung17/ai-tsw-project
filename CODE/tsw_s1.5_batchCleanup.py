@@ -260,7 +260,7 @@ class BatchCleanupProcessor:
         if self.workflow_type == 'text':
             return self._reprocess_text_item(item, model_name)
         else:
-            return self._reprocess_image_item(item, model_name)
+            return None
     
     def _reprocess_text_item(self, item: Dict[str, Any], model_name: str) -> Tuple[Dict[str, Any], str, Any, float]:
         """Reprocess a text item using same logic as Step 1."""
@@ -293,7 +293,7 @@ class BatchCleanupProcessor:
             }, "Empty content", None, 0
         
         # Use prompts module (same as Step 1)
-        prompt, prompt_type = SouthernArchitectPrompts.determine_prompt_type(content, page_number, file_path)
+        prompt = DissertationPrompts
         
         api_stats.total_requests += 1
         start_time = time.time()
@@ -302,7 +302,7 @@ class BatchCleanupProcessor:
             model=model_name,
             messages=[{
                 "role": "system", 
-                "content": "You are an AI archival expert tasked with cleaning OCR text and extracting metadata from it."
+                "content": "You are an AI archival expert tasked with extracting metadata from this dissertation."
             }, {
                 "role": "user",
                 "content": f"{prompt}\n\nHere's the content to analyze:\n\n{content.strip()}\n\nNote: This is a Step 1.5 cleanup - reprocessing to fix batch processing issues."
@@ -344,82 +344,6 @@ class BatchCleanupProcessor:
         parsed_json = postprocess_api_response(parsed_json)
         
         return parsed_json, raw_response, response.usage, processing_time
-    
-    def _reprocess_image_item(self, item: Dict[str, Any], model_name: str) -> Tuple[Dict[str, Any], str, Any, float]:
-        """Reprocess an image item using same logic as Step 1."""
-        # Get original image path
-        image_path = item.get('image_path', '')
-        if not image_path or not os.path.exists(image_path):
-            raise Exception("Original image file not found for reprocessing")
-        
-        # Prepare base64 image (same as Step 1)
-        with open(image_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-        
-        api_stats.total_requests += 1
-        start_time = time.time()
-        
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": f"{SouthernArchitectPrompts.get_image_analysis_prompt()}\n\nNote: This is Step 1.5 cleanup - reprocessing to fix batch processing issues."},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                ]
-            }],
-            max_tokens=3000,
-            temperature=0.1  # Low temperature for consistency
-        )
-        
-        processing_time = time.time() - start_time
-        api_stats.processing_times.append(processing_time)
-        
-        api_stats.total_input_tokens += response.usage.prompt_tokens
-        api_stats.total_output_tokens += response.usage.completion_tokens
-        
-        raw_response = response.choices[0].message.content.strip()
-        
-        # Use enhanced parsing
-        parsed_json, error = self.parse_json_response_enhanced(raw_response)
-        
-        if not parsed_json:
-            raise Exception(f"Enhanced JSON parsing failed: {error}")
-        
-        # Handle field name variations (same as Step 1)
-        if 'subjects' in parsed_json and 'topics' not in parsed_json:
-            parsed_json['topics'] = parsed_json.pop('subjects')
-        elif 'subjectHeadings' in parsed_json and 'topics' not in parsed_json:
-            parsed_json['topics'] = parsed_json.pop('subjectHeadings')
-        
-        # Ensure required fields exist
-        required_fields = ['textTranscription', 'visualDescription', 'tocEntry', 'namedEntities', 'geographicEntities', 'topics', 'contentWarning']
-        for field in required_fields:
-            if field not in parsed_json:
-                if field in ['namedEntities', 'geographicEntities', 'topics']:
-                    parsed_json[field] = []
-                else:
-                    parsed_json[field] = ""
-        
-        # Post-process the response (same as Step 1)  
-        parsed_json = postprocess_api_response(parsed_json)
-        
-        return parsed_json, raw_response, response.usage, processing_time
-    
-    def _preprocess_ocr_text(self, text):
-        """Preprocess OCR text (same as Step 1)."""
-        replacements = {
-            "Sv'cink i^idam": "Frank Adam",
-            # Add more common OCR errors here as needed
-        }
-        
-        for error, correction in replacements.items():
-            text = text.replace(error, correction)
-        
-        # Remove unusual characters
-        text = re.sub(r'[^\w\s.,;:!?()-]', '', text)
-        
-        return text
     
     def update_json_data(self, item_index: int, new_analysis: Dict[str, Any]) -> bool:
         """Update JSON data with reprocessed results."""

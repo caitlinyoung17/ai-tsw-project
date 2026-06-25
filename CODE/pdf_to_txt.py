@@ -40,6 +40,7 @@ def collect_dissertation_files(input_folder):
 # When testing, you can use this step (instead of step before) 
 # to generate and extract .txt files from PDFs to be stored locally, 
 # rather than relying on extracted txt file from PDF to be stored in memory. 
+# To do this, comment out the section above, and make this section active (not commented out).
 #
 # def convert_pdfs_to_txt(input_folder, output_folder=None):
 #     """
