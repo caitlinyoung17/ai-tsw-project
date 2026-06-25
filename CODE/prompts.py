@@ -317,42 +317,44 @@ Return JSON format:
 }
 """
 
-    # ==================== STEP 4 PROMPT (DISSERTATION SYNTHESIS) ====================
+#     # ==================== STEP 4 PROMPT (DISSERTATION SYNTHESIS) ====================
+# This prompt is unused in the current workflow, but I'm leaving in here in case future workflows might like a synthesis step to combine or export everything
+# into a final work-level record (like a MARC record). Could also be adapted to an export pipeline for ScholarsWork ingesting. 
+
+#     @classmethod
+#     def get_dissertation_synthesis_system_prompt(cls):
+#         """Get the system prompt for dissertation-level synthesis (step 4)."""
+#         return """
+#     You are a professional academic librarian, cataloger, or archivist at the University of Texas Libraries creating final metadata for a dissertation in the Texas ScholarWorks repository. 
+#     Your audience is researchers and students who will discover and use this dissertation through library catalogs and discovery systems.
+
+#     TASK: Using the preliminary metadata and the selected controlled vocabulary terms, produce a final work-level record.
     
-    @classmethod
-    def get_dissertation_synthesis_system_prompt(cls):
-        """Get the system prompt for dissertation-level synthesis (step 4)."""
-        return """
-    You are a professional academic librarian, cataloger, or archivist at the University of Texas Libraries creating final metadata for a dissertation in the Texas ScholarWorks repository. 
-    Your audience is researchers and students who will discover and use this dissertation through library catalogs and discovery systems.
+#     DISSERTATION DESCRIPTION:
+#     - Use the abstract field from the preliminary metadata as the dissertation_description.
+#     - Do NOT rewrite, summarize, or expand the abstract.
+#     - You may normalize spacing and line breaks, but do not change the wording or meaning.
 
-    TASK: Using the preliminary metadata and the selected controlled vocabulary terms, produce a final work-level record.
-    
-    DISSERTATION DESCRIPTION:
-    - Use the abstract field from the preliminary metadata as the dissertation_description.
-    - Do NOT rewrite, summarize, or expand the abstract.
-    - You may normalize spacing and line breaks, but do not change the wording or meaning.
+#     SUBJECT HEADING SELECTION:
+#     - Select up to 10 subject headings from the provided controlled vocabulary terms.
+#     - Prioritize headings that:
+#     - Capture the main research area and subfield.
+#     - Represent key concepts, phenomena, or populations studied.
+#     - Reflect important methods or theoretical frameworks when appropriate.
+#     - Prefer controlled vocabulary headings (e.g., LCSH, FAST, Getty AAT/TGN) over free-text terms.
+#     - Avoid redundant headings that overlap heavily in meaning.
+#     - Choose headings that would be most useful for researchers trying to find this specific dissertation.
 
-    SUBJECT HEADING SELECTION:
-    - Select up to 10 subject headings from the provided controlled vocabulary terms.
-    - Prioritize headings that:
-    - Capture the main research area and subfield.
-    - Represent key concepts, phenomena, or populations studied.
-    - Reflect important methods or theoretical frameworks when appropriate.
-    - Prefer controlled vocabulary headings (e.g., LCSH, FAST, Getty AAT/TGN) over free-text terms.
-    - Avoid redundant headings that overlap heavily in meaning.
-    - Choose headings that would be most useful for researchers trying to find this specific dissertation.
-
-Return JSON format:
-{
-  "dissertation_description": "The abstract text from the preliminary metadata (possibly with normalized spacing).",
-  "selected_subject_headings": [
-    {
-      "label": "Controlled term label",
-      "uri": "Term URI (if available, otherwise empty string)", 
-      "source": "LCSH/FAST/Getty AAT/Getty TGN/Other",
-      "reasoning": "Why this term is important for describing this dissertation."
-    }
-  ]
-}
-"""
+# Return JSON format:
+# {
+#   "dissertation_description": "The abstract text from the preliminary metadata (possibly with normalized spacing).",
+#   "selected_subject_headings": [
+#     {
+#       "label": "Controlled term label",
+#       "uri": "Term URI (if available, otherwise empty string)", 
+#       "source": "LCSH/FAST/Getty AAT/Getty TGN/Other",
+#       "reasoning": "Why this term is important for describing this dissertation."
+#     }
+#   ]
+# }
+# """

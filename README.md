@@ -34,7 +34,7 @@ This module provides two related utilities for handling dissertation input:
 ---
 
 #### Step 1: Initial Metadata Extraction
-**Scripts**: `tsw_initial_metadata_extraction.py`
+**Scripts**: `tsw_s1_initialMetadataExtraction.py`
 This step performs work-level metadata extraction for each dissertation. It:
 - Reads full text for each dissertation via `collect_dissertation_files`, either from `.txt` files or directly from PDFs using `extract_text`.
 - Uses `DissertationPrompts.get_dissertation_metadata_prompt()` with OpenAI models to extract core descriptive and bibliographic metadata, including:
@@ -56,7 +56,7 @@ NOTE!! This part is still being worked on
 - Ensures clean, complete metadata before downstream processing
 
 #### Step 2: Multi-Vocabulary Enhancement
-**Script**: `tsw_vocab_querying.py`
+**Script**: `tsw_s2_vocabQuerying.py`
 This step enriches the free-text subjects and geographic entities from Step 1 with candidate controlled vocabulary terms. It:
 - Reads `text_workflow.json` and extracts:
   - `analysis['subjects']` — free-text subjects for each dissertation.
@@ -77,7 +77,7 @@ This step enriches the free-text subjects and geographic entities from Step 1 wi
   - `vocabulary_mapping_report.txt` — a human-readable report summarizing vocab mappings and API usage.
 
 #### Step 3: AI-Powered Vocabulary Selection
-**Script**: `tsw_terms_selection.py`
+**Script**: `tsw_s3_termsSelection.py`
 This step uses a small OpenAI model to choose the best controlled vocabulary terms from the candidate headings generated in Step 2. It:
 - Reads `text_workflow.json` and, for each dissertation with `analysis['vocabulary_search_results']`, builds prompts that include:
   - The dissertation’s title and abstract.
@@ -97,7 +97,7 @@ This step uses a small OpenAI model to choose the best controlled vocabulary ter
   - The final selected controlled terms from Step 3.
 
 #### Step 4: Entity Authority File Creation
-**Script**: `entity_authority.py`
+**Script**: `tsw_s4_entityAuthority.py`
 This step builds a local authority file for named entities extracted from dissertation metadata. It:
 - Reads `text_workflow.json` and aggregates `analysis['namedEntities']` across all processed dissertations.
 - Parses typed entity strings (e.g., `Jane Doe (Advisor)`, `University of Texas at Austin (Institution)`) to extract:
@@ -129,7 +129,7 @@ This step builds a local authority file for named entities extracted from disser
 ### Environment Setup
 ```bash
 # Clone repository
-git clone <ai-tsw-project>
+git clone https://github.com/YOUR-USERNAME/YOUR-REPOSITORY
 cd <ai-tsw-project>
 
 # (Optional but recommended) Create and activate a virtual environment
@@ -154,7 +154,7 @@ $Env:OPENAI_API_KEY="your-api-key-here"         # Windows (PowerShell)
 ├── CODE/
 │   ├── pdf_to_txt.py                     # Input handling (PDF/Text) utilities
 │   ├── tsw_s1_initialMetadataExtraction.py  # Step 1: Initial metadata extraction
-│   ├── tsw_s2-vocabQuerying.py           # Step 2: Multi-vocabulary enhancement
+│   ├── tsw_s2_vocabQuerying.py           # Step 2: Multi-vocabulary enhancement
 │   ├── tsw_s3_termsSelection.py            # Step 3: AI-powered vocabulary selection
 │   ├── tsw_s4_entityAuthority.py           # Step 4: Entity authority file creation 
 │   ├── prompts.py                        # DissertationPrompts and other prompt definitions
