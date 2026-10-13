@@ -15,7 +15,8 @@ from .pipeline import Pipeline
 from .steps import default_steps
 
 EXIT_OK, EXIT_CONFIG, EXIT_MISSING, EXIT_STEP = 0, 2, 3, 4
-STEP_IDS = ["1", "1.5", "2", "3", "4"]
+# step id -> description; derived from the steps so they remain the source of truth
+STEP_IDS = {s.name: s.description for s in default_steps()}
 
 
 def exit_src_for(exc: BaseException) -> int:
@@ -36,7 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output-root", default="output_folders")
     p.add_argument("--folder", help="Existing run folder to resume")
     p.add_argument("--model", default=None)
-    p.add_argument("--steps", default=None, help="Comma list, e.g. 1,1.5,2,3,4")
+    p.add_argument("--steps", default=None, help="Comma list of steps to run, e.g. 1,1.5,2,3,4. Steps: " + "; ".join(
+        f"{k}={v}" for k, v in STEP_IDS.items()))
     p.add_argument("--batch", dest="batch", action="store_true", default=None)
     p.add_argument("--no-batch", dest="batch", action="store_false")
     p.add_argument("--full-text-scan", action="store_true")
@@ -54,7 +56,7 @@ def parse_steps(text: Optional[str]) -> Optional[List[str]]:
     ids = [t.strip() for t in text.split(",") if t.strip()]
     bad = [i for i in ids if i not in STEP_IDS]
     if bad:
-        raise ConfigError(f"Unknown steps {bad}; choose from {STEP_IDS}")
+        raise ConfigError(f"Unknown steps {bad}; choose from {list(STEP_IDS)}")
     return ids
 
 
@@ -63,9 +65,11 @@ def run_cli(args, context=None) -> int:
     try:
         only = parse_steps(args.steps)
         if only is None and args.folder and not args.input:
-            only = STEP_IDS[1:]   # resuming a folder: step 1 needs --input
+            only = list(STEP_IDS)[1:]   # resuming a folder: step 1 needs --input
         context = context or build_default_context(args)
-        report = Pipeline(default_steps()).run(context, only=only)
+        pipeline = Pipeline(default_steps())
+        pipeline.validate_selection(only, resuming=context.run_folder is not None)
+        report = pipeline.run(context, only=only)
     except TswError as e:
         logging.error("%s", e)
         return exit_src_for(e)

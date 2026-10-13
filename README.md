@@ -139,13 +139,71 @@ output_folders/  tested_documents/  test_documents/  (data; not deleted)
 
 ## Usage
 
-Run from `src/`:
+### Easiest: interactive prompt
+From the project root:
+```bash
+./run.sh
+```
+`run.sh` checks your environment first (finds Python 3.9+, creates `.venv` if missing or broken, and installs `requirements.txt` when it changes), then asks you questions in the terminal:
+
+```text
+=== TSW Pipeline ===
+
+What would you like to do?
+  1. Process a PDF or .txt file
+  2. Process a folder of PDFs / .txt files
+  3. Resume an existing run folder
+Choose a number [1]: 1
+File to process:
+  (drag and drop it into this window, or paste the path, then press Enter)
+>: /path/to/AZEVEDO-THESIS.pdf
+Comma-separated steps [1,1.5,2,3,4]:
+Model override (blank for default):
+Batch API mode: ...
+```
+You can drag a file or folder into the terminal instead of typing its path (quotes and escaped spaces are handled). Before anything runs, it prints the exact command and asks for confirmation, because the pipeline calls the LLM provider and may incur cost. You still need `PORTKEY_API_KEY` set.
+
+The prompt is a thin wrapper over scripts in `bin/`, which you can also call directly:
+
+| Script | Purpose |
+| --- | --- |
+| `./run.sh` | Interactive prompt (`bin/tui.py`), after environment setup |
+| `bin/setup_env.sh` | Create/repair `.venv` and install dependencies (safe to re-run) |
+| `bin/run_pipeline.sh <file-or-folder> [flags]` | Run the pipeline non-interactively; sets up the env first |
+
+```bash
+bin/run_pipeline.sh tested_documents/AZEVEDO-THESIS.pdf                  # all steps, one file
+bin/run_pipeline.sh tested_documents/ --no-batch --keep-going            # a folder, extra flags pass through
+bin/run_pipeline.sh --folder output_folders/<run> --steps 3,4            # resume an existing run
+```
+
+### Advanced: run the module directly
+Run from `src/` with the virtual environment active:
 ```bash
 python -m pipeline --input <folder of .txt/.pdf> --steps 1,1.5,2,3,4
 python -m pipeline --folder <existing run folder> --steps 2,3,4   # resume
 python -m pipeline --help
 ```
 Flags: `--model`, `--batch/--no-batch`, `--keep-going`, `--log-level`, `--output-root`.
+
+### Pipeline steps and partial runs
+`python -m pipeline --help` lists each step under `--steps`:
+
+| Step | What it does | Needs |
+| --- | --- | --- |
+| `1` | Extract metadata from dissertation text files | none (requires `--input`) |
+| `1.5` | Reprocess failed or incomplete batch extractions | `1` |
+| `2` | Enhance subject terms with standard vocabulary lookups | `1` |
+| `3` | Select the best vocabulary term for each subject | `2` |
+| `4` | Build entity authority records | `1` |
+
+Pass a comma-separated list to `--steps` to run only some of them:
+```bash
+python -m pipeline --input <folder> --steps 1,4                 # extraction + entity authority only
+python -m pipeline --folder <existing run folder> --steps 3,4   # re-run later steps on a finished run
+python -m pipeline --folder <existing run folder>               # resume: defaults to 1.5,2,3,4 (step 1 needs --input)
+```
+Dependencies are checked up front. On a **new run** every step a selected step needs must also be selected, otherwise the command stops with an error such as `step 3 requires ['2']` and runs nothing. When **resuming** with `--folder`, earlier outputs are read from the run folder, so you can leave dependencies out. Unknown step IDs are rejected with the list of valid ones. If a step fails, steps that depend on it are marked not-run; add `--keep-going` to continue with the rest.
 
 ### Chunking options
 `--full-text-scan` (process the whole text in chunks), `--chunk-size N`, `--abstract-scan-max-chunks N`, `--max-chunks N`. Chunk calls are always individual (no provider batch).

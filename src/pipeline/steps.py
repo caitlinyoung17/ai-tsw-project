@@ -26,6 +26,7 @@ def _cost(ctx: PipelineContext, usage: Usage, batch: bool = False) -> float:
 
 class ExtractionStep(ProcessorStep):
     name = "1"
+    description = "Extract metadata from dissertation text files"
     depends_on = ()
 
     def run(self, ctx: PipelineContext) -> StepSummary:
@@ -47,6 +48,7 @@ class ExtractionStep(ProcessorStep):
 
 class CleanupStep(ProcessorStep):
     name = "1.5"
+    description = "Reprocess failed or incomplete batch extractions"
     depends_on = ("1",)
 
     def run(self, ctx: PipelineContext) -> StepSummary:
@@ -60,6 +62,7 @@ class CleanupStep(ProcessorStep):
 
 class VocabEnhancementStep(ProcessorStep):
     name = "2"
+    description = "Enhance subject terms with standard vocabulary lookups"
     depends_on = ("1",)
 
     def run(self, ctx: PipelineContext) -> StepSummary:
@@ -71,6 +74,7 @@ class VocabEnhancementStep(ProcessorStep):
 
 class VocabSelectionStep(ProcessorStep):
     name = "3"
+    description = "Select the best vocabulary term for each subject"
     depends_on = ("2",)
 
     def run(self, ctx: PipelineContext) -> StepSummary:
@@ -83,6 +87,7 @@ class VocabSelectionStep(ProcessorStep):
 
 class EntityAuthorityStep(ProcessorStep):
     name = "4"
+    description = "Build entity authority records"
     depends_on = ("1",)
 
     def run(self, ctx: PipelineContext) -> StepSummary:

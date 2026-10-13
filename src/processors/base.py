@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Tuple
 
 
 class ProcessorStep(ABC):
@@ -14,6 +14,10 @@ class ProcessorStep(ABC):
     """
 
     name: str = "step"
+    description: str = ""
+    # Names of steps whose outputs this step consumes; the single source of
+    # truth for the dependency graph (the Pipeline validates against it).
+    depends_on: Tuple[str, ...] = ()
 
     @abstractmethod
     def run(self, *args: Any, **kwargs: Any) -> Any:

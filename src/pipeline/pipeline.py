@@ -5,7 +5,7 @@ import time
 from typing import List, Optional
 
 from processors.base import ProcessorStep
-from utils.exceptions import StepFailedError, TswError, WorkflowFilesNotFound
+from utils.exceptions import ConfigError, StepFailedError, TswError, WorkflowFilesNotFound
 
 from .context import PipelineContext
 from .report import FAILED, NOT_RUN, OK, PipelineReport, StepReport
@@ -25,6 +25,27 @@ class Pipeline:
         hi = names.index(stop_after) if stop_after else len(names) - 1
         return self.steps[lo:hi + 1]
 
+    def validate_selection(self, only: Optional[List[str]], resuming: bool) -> None:
+        """Reject step selections whose dependencies cannot be satisfied.
+
+        Fresh run (no existing run folder): every dependency of a selected step
+        must also be selected. When resuming, earlier outputs live in the run
+        folder, so dependencies may be omitted.
+        """
+        names = [s.name for s in self.steps]
+        unknown = [n for n in (only or []) if n not in names]
+        if unknown:
+            raise ConfigError(f"Unknown steps {unknown}; choose from {names}")
+        if only is None or resuming:
+            return
+        chosen = set(only)
+        missing = {s.name: sorted(set(s.depends_on) - chosen)
+                   for s in self.steps if s.name in chosen and set(s.depends_on) - chosen}
+        if missing:
+            detail = "; ".join(f"step {k} requires {v}" for k, v in missing.items())
+            raise ConfigError(f"Incompatible --steps selection: {detail} "
+                              "(add them, or pass --folder to resume an existing run)")
+
     def run(self, context: PipelineContext, start_at: Optional[str] = None,
             stop_after: Optional[str] = None, only: Optional[List[str]] = None
             ) -> PipelineReport:
@@ -34,7 +55,7 @@ class Pipeline:
         report = PipelineReport()
         failed: set = set()
         for step in selected:
-            blocked = failed & set(getattr(step, "depends_on", ()))
+            blocked = failed & set(step.depends_on)
             if blocked:
                 report.steps.append(StepReport(step.name, NOT_RUN))
                 failed.add(step.name)
