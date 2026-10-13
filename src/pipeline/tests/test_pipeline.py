@@ -113,3 +113,11 @@ def test_full_run_and_resume(tmp_path):
     r2 = Pipeline(default_steps()).run(ctx2, only=["4"])
     assert [s.step for s in r2.steps] == ["4"] and r2.ok
     assert ctx2.provider.requests == []
+
+
+def test_validate_selection_rejects_missing_dependency_on_fresh_run():
+    p = Pipeline(default_steps())
+    with pytest.raises(ConfigError, match="step 3 requires \\['2'\\]"):
+        p.validate_selection(["1", "3"], resuming=False)
+    p.validate_selection(["1", "2", "3"], resuming=False)
+    p.validate_selection(["3"], resuming=True)   # earlier outputs live in the folder
