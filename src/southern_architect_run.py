@@ -119,7 +119,7 @@ class SouthernArchitectWorkflowRunner:
         except subprocess.CalledProcessError as e:
             print("-" * 50)
             print(f" Script failed: {os.path.basename(script_path)}")
-            print(f"Exit src: {e.returnsrc}")
+            print(f"Exit code: {e.returncode}")
             return False
         except KeyboardInterrupt:
             print("\n\n  Script interrupted by user.")

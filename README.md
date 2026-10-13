@@ -108,13 +108,13 @@ This step builds a local authority file for named entities extracted from disser
 ## Installation & Setup
 
 ### Prerequisites
-- Python 3.9 or newer
+- Python 3.9 or newer (Python 3 is required; on macOS use `python3` until the virtual environment is activated)
 - A Portkey API key configured for the OpenAI provider
 - Packages in `requirements.txt` (`portkey-ai`, `openpyxl`, `rapidfuzz`, `requests`, `pdfminer.six`, `pytest`)
 
 ### Environment Setup
 ```bash
-python -m venv .venv
+python3 -m venv .venv   # use python3: plain `python` is not found on macOS
 source .venv/bin/activate
 pip install -r requirements.txt
 export PORTKEY_API_KEY="your-key"
@@ -155,6 +155,8 @@ Flags: `--model`, `--batch/--no-batch`, `--keep-going`, `--log-level`, `--output
 cd src && pytest
 ```
 All tests use fakes (no network, no API keys).
+
+Note for Mac users: You will likely need to use `python3` instead of `python` when running the above commands due to the way MacOS links Python. 
 
 ### Known limitations
 - Geographic terms are looked up in Step 2 but not sent to the LLM in Step 3.

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-import unisrcdata
+import unicodedata
 from typing import Callable, Iterable, TypeVar
 
 T = TypeVar("T")
@@ -18,8 +18,8 @@ def preprocess_ocr_text(text: str) -> str:
 
 def normalize_for_comparison(s: str) -> str:
     """Lowercase letters and single spaces only; accents folded to ASCII."""
-    s = unisrcdata.normalize("NFKD", s or "")
-    s = "".join(c for c in s if not unisrcdata.combining(c))
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
     s = re.sub(r"[^a-z\s]", "", s.lower())
     return re.sub(r"\s+", " ", s).strip()
 

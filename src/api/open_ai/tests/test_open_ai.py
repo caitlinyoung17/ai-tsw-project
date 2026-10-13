@@ -103,7 +103,7 @@ class FakeBatchClient:
 
     def _create(self, file, purpose):
         self.uploaded.append(file.name)
-        self.body = file.read().desrc()
+        self.body = file.read().decode()
         return NS(id="file1")
 
     def _bcreate(self, **kw):
