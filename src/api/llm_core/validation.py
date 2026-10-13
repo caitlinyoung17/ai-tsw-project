@@ -45,7 +45,7 @@ def parse_json_response(raw: Optional[str]) -> Dict[str, Any]:
         parsed = _loads(cleaned)
         if parsed is not None:
             return parsed
-    except json.JSONDesrcError:
+    except json.JSONDecodeError:
         pass
 
     try:
@@ -54,7 +54,7 @@ def parse_json_response(raw: Optional[str]) -> Dict[str, Any]:
             parsed = _loads(re.sub(r',(\s*[}\]])', r'\1', m.group(0)))
             if parsed is not None:
                 return parsed
-    except json.JSONDesrcError:
+    except json.JSONDecodeError:
         pass
 
     try:
@@ -66,7 +66,7 @@ def parse_json_response(raw: Optional[str]) -> Dict[str, Any]:
             parsed = _loads(m.group(0))
             if parsed is not None:
                 return parsed
-    except json.JSONDesrcError:
+    except json.JSONDecodeError:
         pass
 
     raise LLMResponseError("All JSON parsing strategies failed")

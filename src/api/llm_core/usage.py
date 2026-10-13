@@ -146,7 +146,7 @@ class UsageLogger:
         _emit(self.writer, text, append=False)
         return text
 
-    def log_response(self, script_name: str, row_number: Any, barsrc: Any,
+    def log_response(self, script_name: str, row_number: Any, barcode: Any,
                      response_text: str, model_name: str, usage: Usage,
                      processing_time: float, batch: bool = False,
                      additional_info: Optional[Mapping[str, Any]] = None,
@@ -158,7 +158,7 @@ class UsageLogger:
             o.append(f"LLM Full Responses Log - {script_name.replace('_', ' ').title()}\n")
             o.append(f"Created at: {self._now()}\n")
             o.append("=" * 80 + "\n\n")
-        o.append(f"Row {row_number} - Barsrc {barsrc} - {self._now()}\n")
+        o.append(f"Row {row_number} - Barcode {barcode} - {self._now()}\n")
         o.append("-" * 80 + "\n")
         o.append(f"MODEL: {model_name}\n")
         o.append(f"PROCESSING TIME: {processing_time:.2f}s\n")

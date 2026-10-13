@@ -29,7 +29,7 @@ class WorkflowStore:
             raise WorkflowFilesNotFound(f"Missing {path}", path=str(path))
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDesrcError, UnisrcDesrcError) as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise WorkflowFormatError(f"Malformed JSON in {path}",
                                       path=str(path), cause=e)
         if not isinstance(data, list):
