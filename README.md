@@ -2,7 +2,7 @@
 ## Texas ScholarWorks Metadata Project
 
 ### Project Overview
-This code is part of a set of ongoing projects focused on cataloging the University of Texas at Austin's collections. This research project focuses on evaluating the use of Large Language Models (LLMS) to enhance cataloging workflows. in the first-pass metadata creation process for cataloging digitized dissertations. In previous projects, we've explored the effectiveness of LLMs in enhancing cataloging workflows for architectural archival materials, including architectural drawings and the collection of Southern Architect and Building News journals. We presented on this topic at TCDL 2025, and look forward to presenting our work again this year at the DCMI Annual Conference and the ASIS&T Annual Meeting.
+This src is part of a set of ongoing projects focused on cataloging the University of Texas at Austin's collections. This research project focuses on evaluating the use of Large Language Models (LLMS) to enhance cataloging workflows. in the first-pass metadata creation process for cataloging digitized dissertations. In previous projects, we've explored the effectiveness of LLMs in enhancing cataloging workflows for architectural archival materials, including architectural drawings and the collection of Southern Architect and Building News journals. We presented on this topic at TCDL 2025, and look forward to presenting our work again this year at the DCMI Annual Conference and the ASIS&T Annual Meeting.
 
 ### Project Goals
 
@@ -20,43 +20,34 @@ Workflow at a Glance:
 4. Step 4 - Entity Authority: namedEntities → local authority file.
 
 #### PDF/Text Input Handling
-**Scripts**: `pdf_to_txt.py`
-This module provides two related utilities for handling dissertation input:
-- `collect_dissertation_files(input_folder)` (used by the pipeline):
-  - Reads `.txt` files or extracts text directly from `.pdf` files using `pdfminer.six`.
-  - Returns `(filename, file_path, content)` for each dissertation, which Step 1 uses as input.
-  - This is the function called by `tsw_initial_metadata_extraction.py`.
-
-- `convert_pdfs_to_txt(input_folder, output_folder=None)` (optional helper):
-  - Converts PDFs in `input_folder` to `.txt` files for debugging or manual inspection.
-  - Not required for the pipeline; primarily for users who are either testing the code, or wanting to inspect the extracted text.
+**Module**: `src/processors/metadata_extraction/collector.py`
+Reads `.txt` files, or extracts text from `.pdf` files with `pdfminer.six` (imported lazily, only when a PDF is actually read). Returns the filename, path and content of each dissertation for Step 1.
 
 ---
 
 #### Step 1: Initial Metadata Extraction
-**Scripts**: `tsw_s1_initialMetadataExtraction.py`
+**Package**: `src/processors/metadata_extraction`
 This step performs work-level metadata extraction for each dissertation. It:
-- Reads full text for each dissertation via `collect_dissertation_files`, either from `.txt` files or directly from PDFs using `extract_text`.
-- Uses `DissertationPrompts.get_dissertation_metadata_prompt()` with OpenAI models to extract core descriptive and bibliographic metadata, including:
+- Reads full text for each dissertation via the collector, either from `.txt` files or directly from PDFs.
+- Uses the templates in `src/prompts` with OpenAI models to extract core descriptive and bibliographic metadata, including:
   - Title, creator, date, department, type, access, publisher, sponsor, language
   - Abstract (copied verbatim_ if present, or generated if missing_)
   - Subjects (free-text topics suitable for controlled vocabularies)
   - Named entities and geographic entities
   - Content warnings (if applicable)
-- Supports both individual and batch processing via the `BatchProcessor`, with basic cost and token usage tracking.
+- Supports individual and batch processing through the `LLMProvider` abstraction (`src/api`). Failed batches are reported as errors; they no longer silently fall back to individual paid calls. Chunking (see below) never uses provider-batch calls.
 - Produces a pair of outputs per run:
   - `text_workflow.xlsx` — an Analysis sheet summarizing metadata for each dissertation.
   - `text_workflow.json` — a structured JSON file containing the full `analysis` block for each dissertation, plus API stats.
 
-#### Step 1.5: Batch Cleanup (Automatic)
-**Script**: **Scripts**: `tsw_s1.5_batchCleanup.py`
-NOTE!! This part is still being worked on
-- Automatically detects and fixes failed batch processing items from Step 1
-- Runs individual reprocessing with retry logic for any problematic entries
+#### Step 1.5: Batch Cleanup
+**Package**: `src/processors/batch_cleanup`
+- Detects failed or incomplete items from a Step 1 batch run
+- Reprocesses them individually with retry logic
 - Ensures clean, complete metadata before downstream processing
 
 #### Step 2: Multi-Vocabulary Enhancement
-**Script**: `tsw_s2_vocabQuerying.py`
+**Package**: `src/processors/vocab_enhancement` (HTTP clients in `src/api/vocab`)
 This step enriches the free-text subjects and geographic entities from Step 1 with candidate controlled vocabulary terms. It:
 - Reads `text_workflow.json` and extracts:
   - `analysis['subjects']` — free-text subjects for each dissertation.
@@ -77,17 +68,17 @@ This step enriches the free-text subjects and geographic entities from Step 1 wi
   - `vocabulary_mapping_report.txt` — a human-readable report summarizing vocab mappings and API usage.
 
 #### Step 3: AI-Powered Vocabulary Selection
-**Script**: `tsw_s3_termsSelection.py`
+**Package**: `src/processors/vocab_selection`
 This step uses a small OpenAI model to choose the best controlled vocabulary terms from the candidate headings generated in Step 2. It:
 - Reads `text_workflow.json` and, for each dissertation with `analysis['vocabulary_search_results']`, builds prompts that include:
   - The dissertation’s title and abstract.
   - The free-text subjects from Step 1.
   - The candidate controlled terms per subject from Step 2 (LCSH, FAST, Getty AAT/TGN).
-- Uses `DissertationPrompts.get_vocabulary_selection_system_prompt()` to apply scholarly criteria for relevance and precision, guiding the model to:
+- Uses `prompts.render_vocab_selection` to apply scholarly criteria for relevance and precision, guiding the model to:
   - Select zero or more controlled headings per free-text subject.
   - Avoid weak or partial matches.
   - Prefer authoritative sources when multiple candidates are equivalent.
-- Supports both batch and individual processing via `BatchProcessor`, with token usage and cost logging.
+- Supports batch and individual processing via the `LLMProvider`.
 - Writes the selected terms back into the metadata:
   - `text_workflow.json` — under `analysis['final_selected_terms']` for each dissertation.
   - `text_workflow.xlsx` — updating the “Subject Vocabulary Terms” column to “Selected Subject Vocabulary Terms” containing only the chosen headings.
@@ -97,7 +88,7 @@ This step uses a small OpenAI model to choose the best controlled vocabulary ter
   - The final selected controlled terms from Step 3.
 
 #### Step 4: Entity Authority File Creation
-**Script**: `tsw_s4_entityAuthority.py`
+**Package**: `src/processors/entity_authority`
 This step builds a local authority file for named entities extracted from dissertation metadata. It:
 - Reads `text_workflow.json` and aggregates `analysis['namedEntities']` across all processed dissertations.
 - Parses typed entity strings (e.g., `Jane Doe (Advisor)`, `University of Texas at Austin (Institution)`) to extract:
@@ -117,86 +108,63 @@ This step builds a local authority file for named entities extracted from disser
 ## Installation & Setup
 
 ### Prerequisites
-- Python 3.8 or newer
-- An OpenAI API key with access to the models used in this project
-- Required Python packages (see `requirements.txt`), including:
-  - `openai`
-  - `pdfminer.six`
-  - `rapidfuzz` (for entity authority fuzzy matching)
-  - `openpyxl`
-  - Others listed in `requirements.txt`
+- Python 3.9 or newer
+- A Portkey API key configured for the OpenAI provider
+- Packages in `requirements.txt` (`portkey-ai`, `openpyxl`, `rapidfuzz`, `requests`, `pdfminer.six`, `pytest`)
 
 ### Environment Setup
 ```bash
-# Clone repository
-git clone https://github.com/YOUR-USERNAME/YOUR-REPOSITORY
-cd <ai-tsw-project>
-
-# (Optional but recommended) Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate   # Mac/Linux
-# or
-.\.venv\Scripts\activate    # Windows
-
-# Install dependencies
+source .venv/bin/activate
 pip install -r requirements.txt
-
-# Set environment variables
-export OPENAI_API_KEY="your-api-key-here"        # Mac/Linux
-# or
-set OPENAI_API_KEY="your-api-key-here"          # Windows (cmd)
-$Env:OPENAI_API_KEY="your-api-key-here"         # Windows (PowerShell)
+export PORTKEY_API_KEY="your-key"
+export MODEL_NAME="gpt-4o-mini"      # default model for LLM steps
 ```
 
 ### Directory Structure
 ```text
-<ai-tsw-project>/
-├── CODE/
-│   ├── pdf_to_txt.py                     # Input handling (PDF/Text) utilities
-│   ├── tsw_s1_initialMetadataExtraction.py  # Step 1: Initial metadata extraction
-│   ├── tsw_s2_vocabQuerying.py           # Step 2: Multi-vocabulary enhancement
-│   ├── tsw_s3_termsSelection.py            # Step 3: AI-powered vocabulary selection
-│   ├── tsw_s4_entityAuthority.py           # Step 4: Entity authority file creation 
-│   ├── prompts.py                        # DissertationPrompts and other prompt definitions
-│   ├── shared_utilities.py               # JSON parsing, entity normalization, and helper classes
-│   ├── batch_processor.py                # Batch API submission and result handling
-│   ├── model_pricing.py                  # Cost estimation helpers
-│   ├── token_logging.py                  # Token usage logging utilities
-│   └── [other support scripts...]
-│
-├── DigitizedDissertationTest/            # Example input folder with PDFs/.txt (for testing)
-│   ├── MyDissertation.pdf
-│   └── ...
-│
-├── output_folders/                       # Auto-generated by the scripts
-│   ├── Dissertation_Metadata_Created_YYYY-MM-DD_Time_HH-MM-SS/
-│   │   ├── metadata/
-│   │   │   ├── collection_metadata/
-│   │   │   │   ├── text_workflow.xlsx
-│   │   │   │   ├── text_workflow.json
-│   │   │   │   ├── vocabulary_mapping_report.txt          # Step 2 report
-│   │   │   │   ├── vocabulary_selection_report.txt        # Step 3 report
-│   │   │   │   ├── dissertation_entity_authority.json     # Step 4 JSON authority file
-│   │   │   │   ├── entity_authority_report.txt            # Step 4 human-readable authority report
-│   │   │   │   └── [other metadata files...]
-│   │   │   └── ...
-│   │   ├── logs/
-│   │   │   ├── [token usage logs, vocab API logs, etc.]
-│   │   └── ...
-│   └── ...
-│
-├── requirements.txt
-└── README.md
+src/
+  utils/               run folder, workflow store, text/subject helpers, logging setup, exceptions
+  api/llm_core/        LLMProvider ABC, requests/responses, pricing, usage logging
+  api/open_ai/         Portkey-backed provider and batch client
+  api/vocab/           LCSH / FAST / Getty HTTP clients with caching
+  prompts/             prompt templates and call parameters
+  metadata_standard/   per-run vocabulary candidates and term matching
+  processors/          metadata_extraction (+ chunking), batch_cleanup, vocab_enhancement,
+                       vocab_selection, entity_authority
+  pipeline/            runner (python -m pipeline)
+  southern_architect_run.py   out of scope, untouched
+output_folders/  tested_documents/  test_documents/  (data; not deleted)
 ```
 
 ## Usage
 
-### Complete Workflow (Recommended) - !Still working on this workflow!
+Run from `src/`:
+```bash
+python -m pipeline --input <folder of .txt/.pdf> --steps 1,1.5,2,3,4
+python -m pipeline --folder <existing run folder> --steps 2,3,4   # resume
+python -m pipeline --help
+```
+Flags: `--model`, `--batch/--no-batch`, `--keep-going`, `--log-level`, `--output-root`.
 
+### Chunking options
+`--full-text-scan` (process the whole text in chunks), `--chunk-size N`, `--abstract-scan-max-chunks N`, `--max-chunks N`. Chunk calls are always individual (no provider batch).
+
+### Tests
+```bash
+cd src && pytest
+```
+All tests use fakes (no network, no API keys).
+
+### Known limitations
+- Geographic terms are looked up in Step 2 but not sent to the LLM in Step 3.
+- Steps 1 and 3 no longer write the legacy token/cost usage log.
+- Pricing is a static table (July 2025 rates) in `api/open_ai/pricing.py`.
+- `southern_architect_run.py` is a separate legacy workflow and was not refactored.
 
 ## Cost Management
 
-**Note:** See `model_pricing.py` - Updated as of July 2025
+**Note:** See `src/api/open_ai/pricing.py` - Updated as of July 2025
 
 ### Cost Optimization Strategies
 1. **Batch Processing**: Use for 50% cost reduction on large collections
@@ -227,7 +195,7 @@ $Env:OPENAI_API_KEY="your-api-key-here"         # Windows (PowerShell)
 ## Features
 
 ### Batch Processing
-- Automatic batch API usage for large sets of dissertations (via `BatchProcessor`).
+- Automatic batch API usage for large sets of dissertations (via the provider batch client).
 - Progress monitoring and estimated completion times for long-running jobs.
 - Comprehensive error handling and retry logic for API calls.
 - Batch processing windows of up to 24 hours per batch for steps that use the Batch API (initial metadata extraction, vocabulary querying, term selection).
@@ -270,7 +238,7 @@ For questions about implementation or research collaboration, please reach out v
 
 ## Development
 
-This repository was adapted from the [Southern Architect AI Metadata Project](https://github.com/hannahmoutran/ai-architectural-journals-project) and built with the assistance of [Claude Code](https://code.claude.com/docs/en/overview), Anthropic's AI coding assistant in VS Code, and [OpenAI](https://openai.com/index/gpt-5-1/)'s GPT-5.1.
+This repository was adapted from the [Southern Architect AI Metadata Project](https://github.com/hannahmoutran/ai-architectural-journals-project) and built with the assistance of [Claude src](https://src.claude.com/docs/en/overview), Anthropic's AI coding assistant in VS src, and [OpenAI](https://openai.com/index/gpt-5-1/)'s GPT-5.1.
 
 For questions about this repository, please contact [Karina Sanchez](mailto:karinasanchez@austin.utexas.edu) or [Caitlin Young](mailto:cy4633@my.utexas.edu)
 

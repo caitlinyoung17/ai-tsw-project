@@ -39,9 +39,9 @@ Temporary Items
 .apdisk
 
 # Ignore specific directories
-/CODE/other_code
-/CODE/output_folders
-/CODE/image_folders
+/src/other_src
+/src/output_folders
+/src/image_folders
 
 # Ignore specific common files and directories
 .DS_Store
@@ -53,4 +53,4 @@ myenv/
 *.pdf
 ~$*.xlsx
 
-/CODE/stubborn_layout_ocr.py
+/src/stubborn_layout_ocr.py
