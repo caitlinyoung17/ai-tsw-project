@@ -58,14 +58,17 @@ class VocabLookupService:
     def lookup(self, subjects: Sequence[str],
                geographic_entities: Sequence[str]) -> LookupResult:
         result = LookupResult()
-        for subject in subjects:
+        n_subj, n_geo = len(subjects), len(geographic_entities)
+        for i, subject in enumerate(subjects, 1):
+            self.logger.info("Subject %d/%d: %s", i, n_subj, subject)
             subject = (subject or "").strip()
             if not subject or subject in result.subject_to_terms:
                 continue
             terms = self._gather(self.subject_clients, subject, subject,
                                  self.per_vocab_limit, result.errors)
             result.add_terms(subject, MetadataStandard.dedupe(terms))
-        for entity in geographic_entities:
+        for i, entity in enumerate(geographic_entities, 1):
+            self.logger.info("Geographic entity %d/%d: %s", i, n_geo, entity)
             entity = (entity or "").strip()
             if not entity or entity in result.geographic_to_terms:
                 continue

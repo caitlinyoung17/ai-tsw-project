@@ -93,10 +93,12 @@ class PaginatedProcessor:
     def run(self, text: str, doc_id: str = "") -> MergedMetadata:
         cfg = self.config
         split = split_document(text, cfg)
+        logger.info("%s: chunking: front matter + %d chunk(s)", doc_id, len(split.chunks))
         usage = Usage()
         raws: List[str] = []
         warnings: List[str] = []
 
+        logger.info("%s: chunking sub-step: front matter", doc_id)
         front = self.cp.process_front_matter(split.front_matter)  # failure propagates
         usage = _add(usage, front.usage)
         raws.append(front.raw)
@@ -107,6 +109,8 @@ class PaginatedProcessor:
             parts = [front_meta.get("abstract", "")] if front_meta.get("abstract") else []
             done = False
             for i, chunk in enumerate(split.chunks[:cfg.abstract_scan_max_chunks]):
+                logger.info("%s: abstract scan chunk %d/%d", doc_id, i + 1,
+                            min(len(split.chunks), cfg.abstract_scan_max_chunks))
                 try:
                     r = self.cp.process_abstract_chunk(chunk)
                 except LLMError as e:
@@ -134,6 +138,7 @@ class PaginatedProcessor:
                 chunks = chunks[:cfg.max_chunks]
             total = len(chunks)
             for i, chunk in enumerate(chunks):
+                logger.info("%s: scanning chunk %d/%d", doc_id, i + 1, total)
                 try:
                     r = self.cp.process_chunk(chunk, i, total)
                 except LLMError as e:
@@ -145,6 +150,7 @@ class PaginatedProcessor:
                 raws.append(r.raw)
                 results.append(r)
 
+        logger.info("%s: merging front matter and %d chunk result(s)", doc_id, len(results))
         metadata, cw = merge(front_meta, results)
         return MergedMetadata(metadata, usage, "\n---\n".join(raws),
                               tuple(warnings), cw)

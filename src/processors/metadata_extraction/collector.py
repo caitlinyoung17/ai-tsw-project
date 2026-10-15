@@ -49,6 +49,7 @@ class DocumentCollector:
             suffix = p.suffix.lower()
             if suffix not in (".txt", ".pdf") or not p.is_file():
                 continue
+            logger.info("Reading %s", p.name)
             try:
                 if suffix == ".txt":
                     text = p.read_text(encoding="utf-8")
