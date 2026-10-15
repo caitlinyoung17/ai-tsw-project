@@ -121,6 +121,19 @@ export PORTKEY_API_KEY="your-key"
 export MODEL_NAME="gpt-4o-mini"      # default model for LLM steps
 ```
 
+#### Windows
+Use **Git Bash** (installed with [Git for Windows](https://git-scm.com/download/win); in VS Code choose it via *Terminal → New Terminal → Git Bash*). `./run.sh` and `bin/setup_env.sh` work there: they detect Windows, use the `py -3` launcher if `python3` is missing, and activate `.venv/Scripts/activate`. Install Python 3.9+ from python.org first (tick "Add python.exe to PATH").
+
+If you use PowerShell/cmd instead, set up manually:
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\Activate.ps1      # cmd.exe: .venv\Scripts\activate.bat
+pip install -r requirements.txt
+$env:PORTKEY_API_KEY = "your-key"
+python bin\tui.py                # interactive prompt (replaces ./run.sh)
+```
+If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
+
 ### Directory Structure
 ```text
 src/
