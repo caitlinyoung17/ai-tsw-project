@@ -51,22 +51,28 @@ class BatchCleanupProcessor(ProcessorStep):
     def run(self, run_folder: RunFolder, store: WorkflowStore | None = None
             ) -> CleanupSummary:
         store = store or WorkflowStore(run_folder)
+        logger.info("Sub-step 1/3: loading workflow and checking run mode")
         workflow = store.load()  # raises on missing/malformed
         if not is_batch_run(workflow.api_stats):
             logger.info("Not a batch run; cleanup not needed.")
             return CleanupSummary(CleanupStatus.NOT_A_BATCH_RUN)
+        logger.info("Sub-step 2/3: detecting failed items")
         failed = self.detector.detect(workflow.items)
         if not failed:
+            logger.info("No failed items found; nothing to clean")
             return CleanupSummary(CleanupStatus.NOTHING_TO_CLEAN)
+        logger.info("Sub-step 3/3: reprocessing %d failed item(s)", len(failed))
         fixes: Dict[int, object] = {}
         outcomes: List[ItemOutcome] = []
-        for f in failed:
+        for n, f in enumerate(failed, 1):
+            logger.info("Reprocessing item %d (%d/%d)", f.index, n, len(failed))
             try:
                 fixes[f.index] = self.reprocessor.reprocess(f.item)
                 outcomes.append(ItemOutcome(f, True))
             except TswError as e:
                 logger.error("Could not repair item %d: %s", f.index, e)
                 outcomes.append(ItemOutcome(f, False, str(e)))
+        logger.info("Writing repaired items and cleanup report")
         CleanupWriter(store).apply(workflow, fixes)
         report = run_folder.metadata_dir / "step1_5_cleanup_report.txt"
         report.write_text(render_cleanup_report(outcomes), encoding="utf-8")

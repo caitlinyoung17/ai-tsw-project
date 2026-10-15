@@ -1,6 +1,7 @@
 """Batch execution of selection requests with an explicit custom_id mapping."""
 from __future__ import annotations
 
+import logging
 from typing import Optional, Sequence, Tuple
 
 from api.llm_core import BatchItem, LLMProvider
@@ -8,6 +9,8 @@ from metadata_standard import MetadataStandard
 
 from .selector import (ExtractedEntry, SelectionResult, SelectionStatus,
                        VocabularySelector)
+
+logger = logging.getLogger(__name__)
 
 
 class SelectionBatchRunner:
@@ -37,7 +40,9 @@ class SelectionBatchRunner:
             items.append(BatchItem(cid, request))
         if not items:
             return results
+        logger.info("Batch: submitting %d request(s)", len(items))
         handle = self.provider.submit_batch(items)
+        logger.info("Batch: submitted; waiting for results")
         outcomes = self.provider.collect_batch(
             handle, timeout=self.timeout, poll_interval=self.poll_interval,
             sleep=self.sleep)

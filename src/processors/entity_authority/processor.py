@@ -41,11 +41,15 @@ class EntityAuthorityProcessor(ProcessorStep):
     def run(self) -> dict:
         """Write authority JSON + report; raises WorkflowFilesNotFound if inputs missing."""
         self.run_folder.require_workflow_files()
+        logger.info("Sub-step 1/3: loading workflow and extracting entities")
         workflow = self.store.load()
         raws = extract_all_entities(workflow.items)
+        logger.info("Sub-step 2/3: clustering %d raw entit(ies) (threshold %s)",
+                    len(raws), self.threshold)
         entities = build_entities(raws, self.similarity, self.threshold)
         if not entities:
             logger.info("No named entities found; writing empty authority file")
+        logger.info("Sub-step 3/3: writing authority file and report")
         now = self.clock()
         data = build_authority_file(entities, created=now.isoformat(),
                                     library=self.library, threshold=self.threshold)
@@ -56,5 +60,5 @@ class EntityAuthorityProcessor(ProcessorStep):
         (meta / AUTHORITY_NAME).write_text(
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         (meta / REPORT_NAME).write_text(report, encoding="utf-8")
-        logger.info("Entity authority: %d entities", len(entities))
+        logger.info("Complete: %d entities", len(entities))
         return data

@@ -47,6 +47,7 @@ class VocabEnhancementProcessor(ProcessorStep):
     def run(self, run_folder: Optional[RunFolder] = None) -> VocabSummary:
         rf = run_folder or self.run_folder
         rf.require_workflow_files()           # WorkflowFilesNotFound
+        logger.info("Sub-step 1/4: loading workflow and extracting subjects")
         workflow = self.store.load()          # WorkflowFormatError
         subjects: set[str] = set()
         geos: set[str] = set()
@@ -58,12 +59,16 @@ class VocabEnhancementProcessor(ProcessorStep):
             logger.info("NoSubjectsFound: no subjects or geographic entities")
             return VocabSummary(nothing_to_do=True)
 
+        logger.info("Sub-step 2/4: looking up %d subject(s) and %d geographic "
+                    "entit(ies) in controlled vocabularies", len(subjects), len(geos))
         standards = self.lookup.lookup(sorted(subjects), sorted(geos))
+        logger.info("Sub-step 3/4: writing Excel, JSON and vocabulary report")
         write_excel(self.store, standards)
         write_json(self.store, workflow, standards)
         rf.ensure_dirs()
         write_report(rf.vocab_report_path, standards, clock=self.clock,
                      max_terms_per_vocab=self.lookup.per_vocab_limit)
+        logger.info("Sub-step 4/4: writing API usage log")
         total_requests = 0
         if self.stats:
             summary = self.stats.summary(len(subjects) + len(geos))

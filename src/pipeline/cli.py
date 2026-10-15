@@ -46,7 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--abstract-scan-max-chunks", type=int, default=None)
     p.add_argument("--max-chunks", type=int, default=None)
     p.add_argument("--keep-going", action="store_true")
-    p.add_argument("--log-level", default="INFO")
+    p.add_argument("--log-level", default="INFO", type=str.upper,
+                   choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                   help="Logging verbosity (default INFO logs all progress; "
+                        "ERROR suppresses everything but errors)")
+    p.add_argument("--quiet", action="store_true",
+                   help="Shortcut for --log-level ERROR")
     return p
 
 
@@ -79,7 +84,8 @@ def run_cli(args, context=None) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    configure_logging(getattr(logging, args.log_level.upper(), logging.INFO))
+    level = "ERROR" if args.quiet else args.log_level
+    configure_logging(getattr(logging, level, logging.INFO))
     return run_cli(args)
 
 

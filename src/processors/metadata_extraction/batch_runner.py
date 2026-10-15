@@ -31,9 +31,12 @@ class BatchExtractor:
         outcomes: Dict[str, ExtractionOutcome] = {}
         items: List[BatchItem] = []
         by_id: Dict[str, Document] = {}
+        logger.info("Batch: preparing requests for %d document(s)", len(documents))
         for doc in documents:
             try:
                 if self.extractor.needs_chunking(doc):  # many requests: run individually
+                    logger.info("Batch: %s needs chunking; processing individually",
+                                doc.filename)
                     outcomes[doc.doc_id] = self._individual(doc)
                     continue
                 request = self.extractor.build_request(doc)
@@ -44,7 +47,10 @@ class BatchExtractor:
             by_id[doc.doc_id] = doc
         if items:
             try:
+                logger.info("Batch: submitting %d request(s)", len(items))
                 handle = self.provider.submit_batch(items)
+                logger.info("Batch: submitted; waiting for results (poll every %.0fs)",
+                            self.poll_interval)
                 results = self.provider.collect_batch(
                     handle, self.timeout, self.poll_interval, self.sleep)
             except BatchError as e:
@@ -55,6 +61,7 @@ class BatchExtractor:
                 for doc_id, doc in by_id.items():
                     outcomes[doc_id] = self._individual(doc)
             else:
+                logger.info("Batch: results received; parsing %d result(s)", len(by_id))
                 for doc_id, doc in by_id.items():
                     outcomes[doc_id] = self._from_batch(doc, results.get(doc_id))
         # preserve input order

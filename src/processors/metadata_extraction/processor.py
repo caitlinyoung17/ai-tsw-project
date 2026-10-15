@@ -50,11 +50,15 @@ class MetadataExtractionProcessor(ProcessorStep):
 
     def _run_individual(self, documents) -> Dict[str, ExtractionOutcome]:
         outcomes: Dict[str, ExtractionOutcome] = {}
+        total = len(documents)
         for i, doc in enumerate(documents):
+            logger.info("Document %d/%d: extracting %s", i + 1, total, doc.filename)
             try:
                 outcomes[doc.doc_id] = Succeeded(self.extractor.extract(doc))
+                logger.info("Document %d/%d: %s extracted OK", i + 1, total, doc.filename)
             except TswError as e:
-                logger.error("Extraction failed for %s: %s", doc.filename, e)
+                logger.error("Document %d/%d: extraction failed for %s: %s",
+                             i + 1, total, doc.filename, e)
                 outcomes[doc.doc_id] = Failed(doc.doc_id, e)
             if i < len(documents) - 1 and self.throttle:
                 self.sleep(self.throttle)
@@ -62,20 +66,26 @@ class MetadataExtractionProcessor(ProcessorStep):
 
     def run(self, input_folder, run_folder: RunFolder) -> RunSummary:
         start = self.clock()
+        logger.info("Sub-step 1/3: collecting documents from %s", input_folder)
         collection = self.collector.collect(input_folder)
         docs = collection.documents
+        logger.info("Collected %d document(s), skipped %d",
+                    len(docs), len(collection.skipped))
         if self._batch_wanted(len(docs)):
             mode = "BATCH"
+            logger.info("Sub-step 2/3: extracting %d document(s) via BATCH", len(docs))
             outcomes = BatchExtractor(
                 self.provider, self.extractor, self.on_batch_failure,
                 sleep=self.sleep).run(docs)
         else:
             mode = "INDIVIDUAL"
+            logger.info("Sub-step 2/3: extracting %d document(s) INDIVIDUALLY", len(docs))
             outcomes = self._run_individual(docs)
         summary = summarize(outcomes, mode, self.clock() - start,
                             {s.path: s.reason for s in collection.skipped})
+        logger.info("Sub-step 3/3: writing workflow files to %s", run_folder)
         WorkflowWriter(WorkflowStore(run_folder)).write(
             docs, outcomes, summary, collection.skipped)
-        logger.info("Step 1 complete: %d/%d succeeded (%s)",
+        logger.info("Complete: %d/%d succeeded (%s)",
                     summary.succeeded, summary.total, mode)
         return summary

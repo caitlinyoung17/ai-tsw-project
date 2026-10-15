@@ -15,6 +15,8 @@ class ProcessorStep(ABC):
 
     name: str = "step"
     description: str = ""
+    # Brief shorthand shown in log lines next to the step id, e.g. "cleanup".
+    short_name: str = ""
     # Names of steps whose outputs this step consumes; the single source of
     # truth for the dependency graph (the Pipeline validates against it).
     depends_on: Tuple[str, ...] = ()

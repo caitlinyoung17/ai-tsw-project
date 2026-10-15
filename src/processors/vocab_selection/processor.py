@@ -43,6 +43,7 @@ class VocabSelectionProcessor(ProcessorStep):
 
     def run(self) -> dict:
         self.run_folder.require_workflow_files()
+        logger.info("Sub-step 1/3: loading workflow")
         workflow = self.store.load()
         if not any("vocabulary_search_results" in (it.get("analysis") or {})
                    for it in workflow.items):
@@ -57,14 +58,20 @@ class VocabSelectionProcessor(ProcessorStep):
             batch = self.provider.supports_batch and n_requests >= self.batch_threshold
         if batch and not self.provider.supports_batch:
             batch = False
+        logger.info("Sub-step 2/3: selecting terms for %d entr(ies) via %s",
+                    n_requests, "BATCH" if batch else "INDIVIDUAL calls")
         if batch:
             results = SelectionBatchRunner(self.provider, self.selector,
                                            sleep=self.batch_sleep).run(pairs)
         else:
-            results = {e.entry_id: self.selector.select(e, s) for e, s in pairs}
+            results = {}
+            for n, (e, s) in enumerate(pairs, 1):
+                logger.info("Entry %d/%d: %s", n, len(pairs), e.title or e.entry_id)
+                results[e.entry_id] = self.selector.select(e, s)
         for r in results.values():
             if r.usage is not None:
                 self.usage.record(r.usage, batch=batch)
+        logger.info("Sub-step 3/3: writing JSON, Excel and selection report")
         writer = SelectionWriter(self.store)
         new = writer.write_json(workflow, results)
         writer.write_excel(new)
