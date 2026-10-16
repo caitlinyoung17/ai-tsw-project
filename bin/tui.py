@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Interactive prompt for the TSW pipeline. Stdlib only; launched by ./run.sh."""
 import os
+import re
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 BIN = Path(__file__).resolve().parent
 ROOT = BIN.parent
@@ -18,17 +21,28 @@ STEPS = [
 ]
 
 
-def clean_path(raw: str) -> str:
-    """Normalize a pasted or drag-and-dropped path (quotes, backslash escapes, file://)."""
+def clean_path(raw: str, windows: bool = None) -> str:
+    """Normalize a pasted or drag-and-dropped path (quotes, escapes, file://, Git Bash /c/ paths)."""
+    windows = (os.name == "nt") if windows is None else windows
     raw = raw.strip()
     if raw.startswith("file://"):
-        raw = raw[len("file://"):]
-    try:
-        parts = shlex.split(raw)
-        if len(parts) == 1:
-            raw = parts[0]
-    except ValueError:
-        pass
+        raw = unquote(raw[len("file://"):])
+        if windows and re.match(r"^/[A-Za-z]:", raw):
+            raw = raw[1:]                      # file:///C:/x -> C:/x
+    if windows:
+        # Backslashes are path separators here, so shlex (POSIX escapes) would corrupt them.
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+            raw = raw[1:-1]
+        m = re.match(r"^/([A-Za-z])(/.*)?$", raw)  # Git Bash style /c/Users/x
+        if m:
+            raw = f"{m.group(1).upper()}:{m.group(2) or '/'}"
+    else:
+        try:
+            parts = shlex.split(raw)
+            if len(parts) == 1:
+                raw = parts[0]
+        except ValueError:
+            pass
     return str(Path(raw).expanduser())
 
 
@@ -68,7 +82,7 @@ def ask_path(prompt, want_dir=None):
         elif want_dir is True and not path.is_dir():
             print("  Please provide a folder.")
         else:
-            return str(path)
+            return str(path.resolve())
 
 
 def ask_int(prompt):
@@ -129,7 +143,12 @@ def main():
     if ask_yes_no("Keep going if a step fails?", False):
         args.append("--keep-going")
 
-    cmd = [str(RUN_PIPELINE), *args]
+    # .sh files are not directly executable on Windows; run them through Git Bash.
+    bash = shutil.which("bash") if os.name == "nt" else None
+    if os.name == "nt" and not bash:
+        print("bash was not found. Run this from Git Bash (installed with Git for Windows).")
+        return 1
+    cmd = [*([bash] if bash else []), str(RUN_PIPELINE), *args]
     print("\nAbout to run:\n  " + " ".join(shlex.quote(c) for c in cmd))
     print("This calls the LLM provider and may incur cost.")
     if not ask_yes_no("Proceed?", True):
