@@ -20,6 +20,8 @@ for a in "${ARGS[@]+"${ARGS[@]}"}"; do [ "$a" = "--steps" ] && HAS_STEPS=1; done
 
 if [ -n "$INPUT" ]; then
   [ -e "$INPUT" ] || { echo "Path not found: $INPUT" >&2; exit 1; }
+  # We cd into src/ below, so make the path absolute first.
+  if [ -d "$INPUT" ]; then INPUT="$(cd "$INPUT" && pwd)"; else INPUT="$(cd "$(dirname "$INPUT")" && pwd)/$(basename "$INPUT")"; fi
   # The pipeline takes a folder, so stage a lone file in one.
   if [ -f "$INPUT" ]; then
     STAGE="$(mktemp -d)"
@@ -27,6 +29,8 @@ if [ -n "$INPUT" ]; then
     cp "$INPUT" "$STAGE/"
     INPUT="$STAGE"
   fi
+  # Native Windows Python needs a Windows-style path, not Git Bash's /tmp/...
+  if command -v cygpath >/dev/null 2>&1; then INPUT="$(cygpath -w "$INPUT")"; fi
   ARGS+=(--input "$INPUT")
 fi
 

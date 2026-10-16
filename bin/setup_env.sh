@@ -64,6 +64,8 @@ _setup_env() {
     }
     echo "$want" > "$stamp"
   fi
+  # Windows consoles default to cp1252; titles/abstracts contain non-ASCII text.
+  export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
 }
 _setup_env
 _rc=$?
