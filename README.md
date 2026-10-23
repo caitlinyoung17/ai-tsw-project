@@ -303,7 +303,6 @@ This project represents ongoing research into AI applications for archival metad
 For questions about implementation or research collaboration, please reach out via email. 
 
 - Luz Gonzalez, Scholars Lab GRA: [mg47333@my.utexas.edu](mailto:mg47333@my.utexas.edu)
-- Hannah Moutran: Library Specialist, AI Implementation: [hlm2454@my.utexas.edu](mailto:hlm2454@my.utexas.edu)
 - Devon Murphy, Metadata Analyst: [devon.murphy@austin.utexas.edu​](mailto:devon.murphy@austin.utexas.edu​)
 - Karina Sanchez, Scholars Lab Librarian: [karinasanchez@austin.utexas.edu](mailto:karinasanchez@austin.utexas.edu)
 - Katie Pierce Meyer, Head of Architectural Collections: [katiepiercemeyer@austin.utexas.edu](mailto:katiepiercemeyer@austin.utexas.edu)
@@ -315,7 +314,7 @@ This repository was adapted from the [Southern Architect AI Metadata Project](ht
 
 For questions about this repository, please contact [Karina Sanchez](mailto:karinasanchez@austin.utexas.edu) or [Caitlin Young](mailto:cy4633@my.utexas.edu)
 
-#### Special thanks to Aaron Choate, Director of Research & Strategy at UT Libraries
+#### Special thanks to Hannah Moutran for her work on previous project iterations.
 ---
 
 *This pipeline demonstrates the practical application of Large Language Models for archival metadata creation, using controlled vocabularies as tools whereby LLMs can produce high quality first-pass metadata appropriate for academic institutions.*
