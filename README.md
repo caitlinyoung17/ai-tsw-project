@@ -6,7 +6,7 @@ This src is part of a set of ongoing projects focused on cataloging the Universi
 
 ### Project Goals
 
-This project explores how effictive Large Language Models (LLMs) can be for archival metadata creation for Texas ScholarWorks dissertations and theses for key tasks including text extraction, full-text analysis, subject/keyword assignment, controlled vocabularly selection, and named entity creation.
+This project explores how effective Large Language Models (LLMs) can be for archival metadata creation for Texas ScholarWorks dissertations and theses for key tasks including text extraction, full-text analysis, subject/keyword assignment, controlled vocabulary selection, and named entity creation.
 
 The current implementation is a multi-step workflow that integrates external controlled vocabularies (e.g., LCSH, FAST, Getty AAT/TGN) and produces metadata scholarly-quality suitable for discovery and cataloging. 
 
