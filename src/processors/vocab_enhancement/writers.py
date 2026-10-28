@@ -10,6 +10,7 @@ from openpyxl.styles import Alignment
 
 from metadata_standard import MetadataStandard
 from utils.exceptions import WorkflowFormatError
+from utils.logging_setup import run_parameters_block
 from utils.subjects import parse_subject_list
 from utils.workflow_store import Workflow, WorkflowStore
 
@@ -154,7 +155,8 @@ def write_report(path: Union[str, Path], standards: MetadataStandard, *,
 def write_usage_log(path: Union[str, Path], stats: dict, total_subjects: int,
                     clock: Callable[[], datetime] = datetime.now) -> None:
     L = ["DISSERTATION VOCABULARY API USAGE LOG", "=" * 50, "",
-         f"Generated: {clock():%Y-%m-%d %H:%M:%S}", "", "SUMMARY STATISTICS:",
+         f"Generated: {clock():%Y-%m-%d %H:%M:%S}", "",
+         *run_parameters_block(50).rstrip("\n").split("\n"), "", "SUMMARY STATISTICS:",
          "-" * 20, f"Total subjects processed: {total_subjects}",
          f"Total API requests made: {stats.get('total_requests', 0)}",
          f"Total cache hits: {stats.get('total_cache_hits', 0)}",

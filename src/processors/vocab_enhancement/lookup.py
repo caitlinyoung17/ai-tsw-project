@@ -30,7 +30,9 @@ class VocabLookupService:
     def __init__(self, subject_clients: Sequence[VocabularyClient],
                  geo_clients: Sequence[VocabularyClient],
                  per_vocab_limit: int = 3, geo_limit: int = 1,
-                 logger: Optional[logging.Logger] = None) -> None:
+                 logger: Optional[logging.Logger] = None,
+                 stats=None) -> None:
+        self.stats = stats  # VocabStatsTracker shared with the clients, if any
         self.subject_clients = list(subject_clients)
         self.geo_clients = list(geo_clients)
         self.per_vocab_limit = per_vocab_limit

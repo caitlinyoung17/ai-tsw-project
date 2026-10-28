@@ -16,7 +16,7 @@ def main(argv=None) -> int:
     ap.add_argument("--folder", required=True, help="Run folder path")
     ap.add_argument("--model", default=None)
     args = ap.parse_args(argv)
-    configure_logging()
+    configure_logging(run_parameters={"command": "vocab_selection", **vars(args)})
     try:
         from api.open_ai import OpenAIConfig, build_openai_provider
         from processors.vocab_selection.processor import VocabSelectionProcessor

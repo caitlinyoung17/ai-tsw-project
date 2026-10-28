@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    configure_logging()
+    configure_logging(run_parameters={"command": "batch_cleanup", **vars(args)})
     config = OpenAIConfig.from_env()
     provider = PortkeyOpenAIProvider(config)
     extractor = MetadataExtractor(provider, args.model or config.default_model)

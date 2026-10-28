@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from api.llm_core.testing import FakeProvider
+from api.vocab.stats import VocabStatsTracker
 from metadata_standard import Term
 from pipeline import Pipeline, PipelineConfig, PipelineContext, StepSummary, default_steps
 from pipeline.cli import build_parser, exit_src_for, main, parse_steps, run_cli
@@ -12,6 +13,7 @@ from processors.base import ProcessorStep
 from processors.vocab_enhancement.lookup import VocabLookupService
 from utils.exceptions import (ConfigError, LLMResponseError, StepFailedError,
                               WorkflowFilesNotFound)
+from utils.logging_setup import set_run_parameters
 from utils.run_folder import RunFolder
 
 GOOD = json.dumps({"title": "T", "creator": "C", "subjects": ["rivers", "maps"],
@@ -28,7 +30,7 @@ class StubClient:
 
 def factory(rf):
     return VocabLookupService([StubClient("LCSH"), StubClient("FAST")],
-                              [StubClient("FAST Geographic")])
+                              [StubClient("FAST Geographic")], stats=VocabStatsTracker())
 
 
 def make_ctx(responses, rf=None, tmp_path=None, **cfg):
@@ -97,7 +99,11 @@ def test_full_run_and_resume(tmp_path):
     sel = json.dumps({"selected_terms": [{"label": "rivers term"}]})
     ctx = make_ctx([GOOD, sel], tmp_path=tmp_path)
     ctx.config.input_folder = docs
-    report = Pipeline(default_steps()).run(ctx)
+    set_run_parameters({"input": docs, "model": "fake-model", "api_key": "sk-secret"})
+    try:
+        report = Pipeline(default_steps()).run(ctx)
+    finally:
+        set_run_parameters({})
     assert report.ok, report.render()
     st = {s.step: s.status for s in report.steps}
     assert st["1.5"] == "skipped" and st["4"] == "ok"
@@ -108,6 +114,18 @@ def test_full_run_and_resume(tmp_path):
     assert "final_selected_terms" in json.dumps(data)
     assert (rf.metadata_dir / "entity_authority_file.json").exists() or \
         list(rf.metadata_dir.glob("*authority*.json"))
+    logs = rf.logs_dir
+    written = sorted(logs.glob("*.txt"))
+    assert len(written) == 5
+    for f in written:
+        text = f.read_text()
+        assert "RUN PARAMETERS:" in text and f"input: {docs}" in text, f.name
+        assert "sk-secret" not in text and "api_key: ****" in text, f.name
+    assert (logs / "dissertation_step2_vocab_api_usage_log.txt").exists()
+    for stem in ("dissertation_text_metadata", "dissertation_vocabulary_selection"):
+        assert "TOKEN USAGE" in (logs / f"{stem}_token_usage_log.txt").read_text()
+        assert "LLM RESPONSE" in (logs / f"{stem}_full_responses_log.txt").read_text()
+    assert "a.txt" in (logs / "dissertation_text_metadata_full_responses_log.txt").read_text()
     # resume: only step 4 against the existing folder
     ctx2 = make_ctx([], RunFolder(rf.root), tmp_path)
     r2 = Pipeline(default_steps()).run(ctx2, only=["4"])
@@ -121,3 +139,4 @@ def test_validate_selection_rejects_missing_dependency_on_fresh_run():
         p.validate_selection(["1", "3"], resuming=False)
     p.validate_selection(["1", "2", "3"], resuming=False)
     p.validate_selection(["3"], resuming=True)   # earlier outputs live in the folder
+

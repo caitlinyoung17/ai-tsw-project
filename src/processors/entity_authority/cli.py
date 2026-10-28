@@ -18,7 +18,7 @@ def main(argv=None) -> int:
     ap.add_argument("--threshold", type=float, default=85)
     ap.add_argument("--require-rapidfuzz", action="store_true")
     args = ap.parse_args(argv)
-    configure_logging()
+    configure_logging(run_parameters={"command": "entity_authority", **vars(args)})
     try:
         EntityAuthorityProcessor(RunFolder(args.folder), threshold=args.threshold,
                                  require_rapidfuzz=args.require_rapidfuzz).run()

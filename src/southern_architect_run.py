@@ -128,7 +128,7 @@ class SouthernArchitectWorkflowRunner:
     def find_newest_output_folder(self) -> Optional[str]:
         """Find the newest output folder for the current workflow type."""
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        base_output_dir = os.path.join(script_dir, "output_folders")
+        base_output_dir = os.path.join(os.path.dirname(script_dir), "output")
         
         if not os.path.exists(base_output_dir):
             return None

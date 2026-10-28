@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable, Sequence, Union
 
 from metadata_standard import Term
+from utils.logging_setup import run_parameters_block
 
 
 class ResponseLog:
@@ -16,7 +17,7 @@ class ResponseLog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(
             "DISSERTATION VOCABULARY API DETAILED RESPONSES LOG\n"
-            + "=" * 60 + "\n\n", encoding="utf-8")
+            + "=" * 60 + "\n\n" + run_parameters_block(60), encoding="utf-8")
 
     def record(self, vocab: str, subject: str, query: str,
                terms: Sequence[Term], elapsed: float, error: str = "",

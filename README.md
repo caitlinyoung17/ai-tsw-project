@@ -147,7 +147,9 @@ src/
                        vocab_selection, entity_authority
   pipeline/            runner (python -m pipeline)
   southern_architect_run.py   out of scope, untouched
-output_folders/  tested_documents/  test_documents/  (data; not deleted)
+tested_documents/  test_documents/  (data; not deleted)
+
+output/              run folders (git-ignored); override with --output-root
 ```
 
 ## Usage
@@ -187,7 +189,7 @@ The prompt is a thin wrapper over scripts in `bin/`, which you can also call dir
 ```bash
 bin/run_pipeline.sh tested_documents/AZEVEDO-THESIS.pdf                  # all steps, one file
 bin/run_pipeline.sh tested_documents/ --no-batch --keep-going            # a folder, extra flags pass through
-bin/run_pipeline.sh --folder output_folders/<run> --steps 3,4            # resume an existing run
+bin/run_pipeline.sh --folder output/<run> --steps 3,4            # resume an existing run
 ```
 
 ### Advanced: run the module directly
@@ -231,7 +233,6 @@ Note for Mac users: You will likely need to use `python3` instead of `python` wh
 
 ### Known limitations
 - Geographic terms are looked up in Step 2 but not sent to the LLM in Step 3.
-- Steps 1 and 3 no longer write the legacy token/cost usage log.
 - Pricing is a static table (July 2025 rates) in `api/open_ai/pricing.py`.
 - `southern_architect_run.py` is a separate legacy workflow and was not refactored.
 
@@ -263,7 +264,14 @@ Note for Mac users: You will likely need to use `python3` instead of `python` wh
 - Human-readable vocabulary mapping report from Step 2 (`vocabulary_mapping_report.txt`).
 - Vocabulary selection report from Step 3 (`vocabulary_selection_report.txt`) summarizing subjects, candidate terms, and selected headings.
 - Entity authority report (`entity_authority_report.txt`) with type breakdowns, clustering results, and examples (Step 4).
-- Processing logs and API usage summaries in the `logs/` directory (token usage logs, vocab API logs, batch processing logs).
+- Per-run logs in the `logs/` directory of the run folder:
+  - `dissertation_text_metadata_token_usage_log.txt` / `_full_responses_log.txt` (Step 1: tokens, cost, and the raw LLM response for each document)
+  - `dissertation_step2_vocab_api_usage_log.txt` / `dissertation_step2_vocab_full_responses_log.txt` (Step 2: per-vocabulary request counts, success rates, timing, and every term lookup)
+  - `dissertation_vocabulary_selection_token_usage_log.txt` / `_full_responses_log.txt` (Step 3: tokens, cost, and the raw LLM response for each entry)
+  
+  Each of these files begins with a `RUN PARAMETERS` block listing the command-line inputs and resolved settings (model, batch mode, chunking, run folder) for the run; secrets are masked.
+
+  Step 1.5 and Step 4 write their reports to `metadata/collection_metadata/` rather than `logs/`. Console progress output is controlled by `--log-level` / `--quiet`.
 
 ## Features
 

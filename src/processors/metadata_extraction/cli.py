@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from api.open_ai.config import OpenAIConfig
 from api.open_ai.provider import PortkeyOpenAIProvider
-from utils.run_folder import RunFolder
+from utils.run_folder import DEFAULT_OUTPUT_ROOT, RunFolder
 
 from .extractor import MetadataExtractor
 from .processor import MetadataExtractionProcessor
@@ -21,7 +21,7 @@ src_DIR = Path(__file__).resolve().parents[2]
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Step 1: dissertation metadata extraction")
     p.add_argument("--input", default=str(src_DIR / "DigitizedDissertationTest"))
-    p.add_argument("--output-root", default=str(src_DIR / "output_folders"))
+    p.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     p.add_argument("--model", default=None)
     p.add_argument("--batch", dest="batch", action="store_true", default=None)
     p.add_argument("--no-batch", dest="batch", action="store_false")
@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    configure_logging()
+    configure_logging(run_parameters={"command": "metadata_extraction", **vars(args)})
     config = OpenAIConfig.from_env()
     provider = PortkeyOpenAIProvider(config)
     model = args.model or config.default_model

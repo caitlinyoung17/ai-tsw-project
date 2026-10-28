@@ -4,11 +4,41 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Iterator, Optional
+from typing import Any, Dict, Iterator, Mapping, Optional
 
 _NOISY_LOGGERS = ("httpx", "httpcore", "openai", "urllib3", "portkey_ai")
 _MARKER = "_tsw_handler"
 _current_step: ContextVar[str] = ContextVar("tsw_current_step", default="")
+
+_SECRET_HINTS = ("key", "token", "secret", "password")
+_run_parameters: Dict[str, str] = {}
+
+
+def set_run_parameters(params: Mapping[str, Any]) -> None:
+    """Record the inputs of this run; every log file header and the console
+    log report them. Unset values show as "(default)"; secrets are masked."""
+    _run_parameters.clear()
+    for k, v in params.items():
+        if v is None or v == "":
+            shown = "(default)"
+        elif any(h in k.lower() for h in _SECRET_HINTS):
+            shown = "****"
+        else:
+            shown = str(v)
+        _run_parameters[k] = shown
+
+
+def run_parameters() -> Dict[str, str]:
+    return dict(_run_parameters)
+
+
+def run_parameters_block(width: int = 60) -> str:
+    """Text block for the top of a log file; empty when nothing was recorded."""
+    if not _run_parameters:
+        return ""
+    lines = ["RUN PARAMETERS:", "-" * 30]
+    lines += [f"{k}: {v}" for k, v in _run_parameters.items()]
+    return "\n".join(lines) + "\n" + "=" * width + "\n\n"
 
 
 @contextmanager
@@ -29,9 +59,12 @@ class _StepFilter(logging.Filter):
 
 
 def configure_logging(level: int = logging.INFO,
-                      log_file: Optional[str] = None) -> None:
+                      log_file: Optional[str] = None,
+                      run_parameters: Optional[Mapping[str, Any]] = None) -> None:
     """Configure the root logger. Idempotent: repeated calls do not add
     duplicate handlers."""
+    if run_parameters is not None:
+        set_run_parameters(run_parameters)
     root = logging.getLogger()
     root.setLevel(level)
     fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(step_prefix)s%(message)s")

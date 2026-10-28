@@ -46,6 +46,7 @@ class SelectionResult:
     usage: Optional[Usage] = None
     error: Optional[str] = None
     unmatched_labels: list = field(default_factory=list)
+    raw: Optional[str] = None
 
     @property
     def has_issue(self) -> bool:
@@ -101,8 +102,10 @@ class VocabularySelector:
                 parse_json_response(completion.content))
         except LLMError as e:  # LLMResponseError / PayloadValidationError
             return SelectionResult(SelectionStatus.FAILED, usage=usage,
-                                   error=f"Unparseable selection: {e}")
+                                   error=f"Unparseable selection: {e}",
+                                   raw=completion.content)
         terms: list[Term] = standard.match_selected_labels(labels)
         unmatched = standard.unmatched_labels(labels)
         status = SelectionStatus.SELECTED if terms else SelectionStatus.NONE_SELECTED
-        return SelectionResult(status, terms, usage, None, unmatched)
+        return SelectionResult(status, terms, usage, None, unmatched,
+                               raw=completion.content)
