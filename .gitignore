@@ -40,7 +40,7 @@ Temporary Items
 
 # Ignore specific directories
 /src/other_src
-/src/output_folders
+/output
 /src/image_folders
 
 # Ignore specific common files and directories

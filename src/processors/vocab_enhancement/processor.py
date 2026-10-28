@@ -41,7 +41,7 @@ class VocabEnhancementProcessor(ProcessorStep):
         self.run_folder = run_folder
         self.lookup = lookup
         self.store = store or WorkflowStore(run_folder)
-        self.stats = stats
+        self.stats = stats or getattr(lookup, "stats", None)
         self.clock = clock
 
     def run(self, run_folder: Optional[RunFolder] = None) -> VocabSummary:

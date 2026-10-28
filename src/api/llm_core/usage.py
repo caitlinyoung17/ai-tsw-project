@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Union
 
+from utils.logging_setup import run_parameters_block
+
 from .pricing import PricingProvider
 from .types import Usage
 
+_log = logging.getLogger(__name__)
 Writer = Union[Callable[[str], None], Path]
 
 
@@ -51,6 +55,55 @@ class UsageTracker:
             "total_time": sum(self.processing_times),
             "average_time": (sum(self.processing_times) / n) if n else 0.0,
         }
+
+
+class RunLogs:
+    """The per-step token-usage summary and full-responses log pair
+    (``<stem>_token_usage_log.txt`` / ``<stem>_full_responses_log.txt``).
+
+    Logging is informational: any failure is reported as a warning and never
+    fails the step. The responses file is recreated on the first response of
+    each run rather than appended across runs.
+    """
+
+    def __init__(self, pricing: PricingProvider, logs_dir: Path, stem: str,
+                 provider_label: str = "OpenAI",
+                 clock: Callable[[], datetime] = datetime.now) -> None:
+        self.stem = stem
+        self.logs_dir = Path(logs_dir)
+        self.summary_path = self.logs_dir / f"{stem}_token_usage_log.txt"
+        self.responses_path = self.logs_dir / f"{stem}_full_responses_log.txt"
+        self._summary = UsageLogger(pricing, provider_label, self.summary_path, clock)
+        self._responses = UsageLogger(pricing, provider_label, self.responses_path, clock)
+        self._started = False
+
+    def _guard(self, what: str, fn, *a, **kw) -> None:
+        try:
+            self.logs_dir.mkdir(parents=True, exist_ok=True)
+            fn(*a, **kw)
+        except Exception as e:  # never fail a step over its usage logs
+            _log.warning("Could not write %s log (%s): %s", self.stem, what, e)
+
+    def response(self, row_number: Any, label: Any, response_text: str, model: str,
+                 usage: Usage, elapsed: float, batch: bool = False,
+                 additional_info: Optional[Mapping[str, Any]] = None) -> None:
+        def _write():
+            first = not self._started
+            if first:
+                self.responses_path.unlink(missing_ok=True)
+                self._started = True
+            self._responses.log_response(
+                self.stem, row_number, label, response_text, model, usage, elapsed,
+                batch=batch, additional_info=additional_info, include_header=first)
+        self._guard("full-responses", _write)
+
+    def summary(self, model: str, total_items: int, items_with_issues: int,
+                total_time: float, usage: Usage, batch: bool = False,
+                additional_metrics: Optional[Mapping[str, Any]] = None) -> None:
+        self._guard("token-usage", self._summary.log_summary, self.stem, model,
+                    total_items, items_with_issues, total_time, usage, batch,
+                    additional_metrics)
+        _log.info("Token usage log written to %s", self.summary_path)
 
 
 def _emit(writer: Writer, text: str, append: bool) -> None:
@@ -97,6 +150,7 @@ class UsageLogger:
         o.append(f"{self.provider_label} API Usage Log - {script_name.replace('_', ' ').title()}\n")
         o.append("=" * 60 + "\n")
         o.append(f"Processing completed at: {self._now()}\n\n")
+        o.append(run_parameters_block(60))
         o.append("PROCESSING SUMMARY:\n" + "-" * 30 + "\n")
         o.append(f"Total items processed: {total_items}\n")
         o.append(f"Successful items: {ok}\n")
@@ -158,6 +212,7 @@ class UsageLogger:
             o.append(f"LLM Full Responses Log - {script_name.replace('_', ' ').title()}\n")
             o.append(f"Created at: {self._now()}\n")
             o.append("=" * 80 + "\n\n")
+            o.append(run_parameters_block(80))
         o.append(f"Row {row_number} - Barcode {barcode} - {self._now()}\n")
         o.append("-" * 80 + "\n")
         o.append(f"MODEL: {model_name}\n")

@@ -8,7 +8,8 @@ from typing import List, Optional
 
 from utils.exceptions import (ConfigError, StepFailedError, TswError,
                               WorkflowFilesNotFound)
-from utils.logging_setup import configure_logging
+from utils.run_folder import DEFAULT_OUTPUT_ROOT
+from utils.logging_setup import configure_logging, run_parameters, set_run_parameters
 
 from .context import build_default_context
 from .pipeline import Pipeline
@@ -34,7 +35,7 @@ def exit_src_for(exc: BaseException) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pipeline", description="TSW pipeline runner")
     p.add_argument("--input", help="Folder of dissertation .txt files (step 1)")
-    p.add_argument("--output-root", default="output_folders")
+    p.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     p.add_argument("--folder", help="Existing run folder to resume")
     p.add_argument("--model", default=None)
     p.add_argument("--steps", default=None, help="Comma list of steps to run, e.g. 1,1.5,2,3,4. Steps: " + "; ".join(
@@ -72,6 +73,14 @@ def run_cli(args, context=None) -> int:
         if only is None and args.folder and not args.input:
             only = list(STEP_IDS)[1:]   # resuming a folder: step 1 needs --input
         context = context or build_default_context(args)
+        cfg = context.config
+        set_run_parameters({
+            "command": "pipeline", **vars(args),
+            "resolved_model": cfg.model, "resolved_use_batch": cfg.use_batch,
+            "resolved_chunking": cfg.chunking, "resolved_threshold": cfg.threshold,
+            "run_folder": context.run_folder.root if context.run_folder else None})
+        logging.info("Run parameters: %s", "; ".join(
+            f"{k}={v}" for k, v in run_parameters().items()))
         pipeline = Pipeline(default_steps())
         pipeline.validate_selection(only, resuming=context.run_folder is not None)
         report = pipeline.run(context, only=only)

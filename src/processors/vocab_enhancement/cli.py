@@ -13,7 +13,7 @@ from processors.vocab_enhancement.lookup import VocabLookupService
 from processors.vocab_enhancement.processor import VocabEnhancementProcessor
 from utils.exceptions import TswError
 from utils.logging_setup import configure_logging
-from utils.run_folder import RunFolder
+from utils.run_folder import DEFAULT_OUTPUT_ROOT, RunFolder
 
 
 def build_processor(run_folder: RunFolder) -> VocabEnhancementProcessor:
@@ -25,16 +25,16 @@ def build_processor(run_folder: RunFolder) -> VocabEnhancementProcessor:
     lookup = VocabLookupService(
         [LcshClient(http, **kw), FastClient(http, **kw),
          GettyAATClient(http, **kw), GettyTGNClient(http, **kw)],
-        [FastGeographicClient(http, **kw)])
+        [FastGeographicClient(http, **kw)], stats=stats)
     return VocabEnhancementProcessor(run_folder, lookup, stats=stats)
 
 
 def main(argv=None, default_output_root=None) -> int:
     ap = argparse.ArgumentParser(description="Step 2: vocabulary enhancement")
     ap.add_argument("--folder", help="Run folder (default: newest in output root)")
-    ap.add_argument("--output-root", default=default_output_root or "output_folders")
+    ap.add_argument("--output-root", default=default_output_root or str(DEFAULT_OUTPUT_ROOT))
     args = ap.parse_args(argv)
-    configure_logging()
+    configure_logging(run_parameters={"command": "vocab_enhancement", **vars(args)})
     try:
         rf = RunFolder(args.folder) if args.folder else RunFolder.newest(args.output_root)
         summary = build_processor(rf).run()

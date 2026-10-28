@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
 
 from processors.base import ProcessorStep
-from api.llm_core import LLMProvider, UsageTracker
+from api.llm_core import LLMProvider, RunLogs, UsageTracker
 from metadata_standard import MetadataStandard
 from prompts.params import SELECTION, CallParams
 from utils.exceptions import WorkflowFormatError
@@ -41,6 +42,24 @@ class VocabSelectionProcessor(ProcessorStep):
         self.batch_sleep = sleep
         self.usage = UsageTracker()
 
+    def _write_usage_logs(self, pairs, results, batch: bool, elapsed: float) -> None:
+        pricing = getattr(self.provider, "pricing", None)
+        if pricing is None:
+            return
+        logs = RunLogs(pricing, self.run_folder.logs_dir, "dissertation_vocabulary_selection")
+        model = self.selector.model
+        logger.info("Writing token usage and full-response logs to %s", self.run_folder.logs_dir)
+        for entry, _ in pairs:
+            r = results.get(entry.entry_id)
+            if r is not None and r.usage is not None:
+                logs.response(entry.entry_id, entry.title or entry.entry_id, r.raw or "",
+                              model, r.usage, 0.0, batch,
+                              {"status": r.status.value,
+                               **({"error": r.error} if r.error else {})})
+        issues = sum(1 for r in results.values() if r.has_issue)
+        logs.summary(model, len(results), issues, elapsed, self.usage.usage, batch,
+                     {"Processing mode": "BATCH" if batch else "INDIVIDUAL"})
+
     def run(self) -> dict:
         self.run_folder.require_workflow_files()
         logger.info("Sub-step 1/3: loading workflow")
@@ -58,6 +77,7 @@ class VocabSelectionProcessor(ProcessorStep):
             batch = self.provider.supports_batch and n_requests >= self.batch_threshold
         if batch and not self.provider.supports_batch:
             batch = False
+        t_start = time.monotonic()
         logger.info("Sub-step 2/3: selecting terms for %d entr(ies) via %s",
                     n_requests, "BATCH" if batch else "INDIVIDUAL calls")
         if batch:
@@ -72,6 +92,7 @@ class VocabSelectionProcessor(ProcessorStep):
             if r.usage is not None:
                 self.usage.record(r.usage, batch=batch)
         logger.info("Sub-step 3/3: writing JSON, Excel and selection report")
+        self._write_usage_logs(pairs, results, batch, time.monotonic() - t_start)
         writer = SelectionWriter(self.store)
         new = writer.write_json(workflow, results)
         writer.write_excel(new)

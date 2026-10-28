@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from processors.metadata_extraction.chunking import ChunkingConfig
-from utils.run_folder import RunFolder
+from utils.run_folder import DEFAULT_OUTPUT_ROOT, RunFolder
 
 
 @dataclass
 class PipelineConfig:
     input_folder: Optional[Path] = None
-    output_root: Path = Path("output_folders")
+    output_root: Path = DEFAULT_OUTPUT_ROOT
     model: Optional[str] = None
     use_batch: Optional[bool] = None
     chunking: Optional[ChunkingConfig] = None   # None = no chunking

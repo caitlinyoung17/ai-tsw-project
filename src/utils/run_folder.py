@@ -8,6 +8,8 @@ from typing import Callable, Union
 from utils.exceptions import WorkflowFilesNotFound
 
 PREFIX = "Dissertation_Metadata_Created_"
+# <repo>/output, independent of the current working directory
+DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parents[2] / "output"
 
 
 class RunFolder:

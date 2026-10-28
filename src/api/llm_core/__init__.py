@@ -6,7 +6,7 @@ from .provider import LLMProvider
 from .retry import RetryPolicy, call_with_retry
 from .types import (BatchHandle, BatchItem, BatchOutcome, CompletionRequest,
                     CompletionResult, Message, Usage)
-from .usage import UsageLogger, UsageTracker
+from .usage import RunLogs, UsageLogger, UsageTracker
 from .validation import (parse_json_response, postprocess_api_response,
                          validate_request, validate_response)
 
